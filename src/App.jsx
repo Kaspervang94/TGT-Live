@@ -7,6 +7,13 @@ import {
 } from "./lib/scores";
 import { getLiveRoundLeaderboard } from "./lib/liveLeaderboard";
 import { getTeamLeaderboard } from "./lib/teamLeaderboard";
+import {
+  calculateClosestToPinLeaders,
+  deleteClosestToPinEntry,
+  getClosestToPinEntries,
+  getFlightClosestEntry,
+  saveClosestToPinEntry,
+} from "./lib/closestToPin";
 
 function formatScore(score) {
   if (score === null || score === undefined) {
@@ -81,6 +88,7 @@ function Leaderboard({ onOpenLogin }) {
   const [standings, setStandings] = useState([]);
   const [liveData, setLiveData] = useState(null);
   const [teamData, setTeamData] = useState(null);
+  const [closestEntries, setClosestEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -108,9 +116,14 @@ function Leaderboard({ onOpenLogin }) {
         getTeamLeaderboard({ season: 2026, roundNumber: 6 }),
       ]);
 
+      const currentClosestEntries = currentLiveData?.round?.id
+        ? await getClosestToPinEntries(currentLiveData.round.id)
+        : [];
+
       setStandings(sortStandings(data));
       setLiveData(currentLiveData);
       setTeamData(currentTeamData);
+      setClosestEntries(currentClosestEntries);
     } catch (error) {
       console.error("Fejl ved hentning af TGT-data:", error);
       setErrorMessage(error.message ?? "Data kunne ikke hentes.");
@@ -129,6 +142,15 @@ function Leaderboard({ onOpenLogin }) {
         { event: "*", schema: "public", table: "scores" },
         loadData
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "closest_to_pin_entries",
+        },
+        loadData
+      )
       .subscribe();
 
     return () => {
@@ -138,6 +160,12 @@ function Leaderboard({ onOpenLogin }) {
 
   const liveLeaderboard = liveData?.leaderboard ?? [];
   const teamLeaderboard = teamData?.leaderboard ?? [];
+  const closestLeaders = calculateClosestToPinLeaders(
+    closestEntries
+  );
+  const parThreeHoles = (liveData?.holes ?? []).filter(
+    (hole) => Number(hole.par) === 3
+  );
 
   const headings = {
     season: {
@@ -157,6 +185,12 @@ function Leaderboard({ onOpenLogin }) {
       title: "Holdfinale",
       description:
         "100 % spillehandicap. På hvert hul tæller holdets bedste nettoscore. Hullet tæller først, når begge holdspillere har afleveret score.",
+    },
+    closest: {
+      eyebrow: "Par 3-konkurrencen",
+      title: "Tættest på pinden",
+      description:
+        "Den korteste registrerede afstand på hvert par 3-hul vises som den aktuelle fører.",
     },
   };
 
@@ -211,6 +245,13 @@ function Leaderboard({ onOpenLogin }) {
               className={tab === "team" ? "login-submit-button" : "login-cancel-button"}
             >
               Holdfinale
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("closest")}
+              className={tab === "closest" ? "login-submit-button" : "login-cancel-button"}
+            >
+              Tættest på pinden
             </button>
           </div>
 
@@ -344,6 +385,81 @@ function Leaderboard({ onOpenLogin }) {
               {teamLeaderboard.length === 0 && (
                 <div className="status-box">
                   Ingen gyldige hold kunne beregnes. Kontrollér, at hvert hold har præcis to spillere og spillehandicap på Runde 6.
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loading && !errorMessage && tab === "closest" && (
+            <div style={{ padding: 20 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 14,
+                }}
+              >
+                {parThreeHoles.map((hole) => {
+                  const leader = closestLeaders.find(
+                    (entry) =>
+                      Number(entry.hole_number) ===
+                      Number(hole.hole_number)
+                  );
+
+                  return (
+                    <article
+                      key={hole.hole_number}
+                      style={{
+                        padding: 18,
+                        border: "1px solid #e0e8e2",
+                        borderRadius: 16,
+                        background: leader ? "#f1f8f3" : "#fafbf9",
+                      }}
+                    >
+                      <p className="eyebrow">
+                        Hul {hole.hole_number} · Par {hole.par}
+                      </p>
+
+                      {leader ? (
+                        <>
+                          <h3 style={{ margin: "5px 0" }}>
+                            {leader.players?.name ?? "Ukendt spiller"}
+                          </h3>
+                          <div
+                            className="final-score"
+                            style={{ marginTop: 8 }}
+                          >
+                            {Number(leader.distance_meters).toLocaleString(
+                              "da-DK",
+                              {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }
+                            )} meter
+                          </div>
+                          <small
+                            style={{
+                              display: "block",
+                              marginTop: 8,
+                              color: "#78827d",
+                            }}
+                          >
+                            {leader.flights?.name ?? "Bold ikke angivet"}
+                          </small>
+                        </>
+                      ) : (
+                        <div className="status-box" style={{ margin: "12px 0 0" }}>
+                          Afventer første kandidat
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+
+              {parThreeHoles.length === 0 && (
+                <div className="status-box">
+                  Der blev ikke fundet par 3-huller på banen.
                 </div>
               )}
             </div>
@@ -495,6 +611,19 @@ function MarkerDashboard({
     useState("");
 
   const [saveError, setSaveError] =
+    useState("");
+
+  const [closestPlayerId, setClosestPlayerId] =
+    useState("");
+  const [closestDistance, setClosestDistance] =
+    useState("");
+  const [closestEntry, setClosestEntry] =
+    useState(null);
+  const [closestLoading, setClosestLoading] =
+    useState(false);
+  const [closestMessage, setClosestMessage] =
+    useState("");
+  const [closestError, setClosestError] =
     useState("");
 
   async function loadScores(
@@ -786,6 +915,133 @@ function MarkerDashboard({
       hole.hole_number === selectedHole
   );
 
+  const isClosestToPinHole =
+    selectedHoleData?.par === 3;
+
+  useEffect(() => {
+    async function loadClosestEntry() {
+      setClosestMessage("");
+      setClosestError("");
+
+      if (
+        !assignment?.round_id ||
+        !assignment?.id ||
+        !isClosestToPinHole
+      ) {
+        setClosestEntry(null);
+        setClosestPlayerId("");
+        setClosestDistance("");
+        return;
+      }
+
+      setClosestLoading(true);
+
+      try {
+        const entry = await getFlightClosestEntry({
+          roundId: assignment.round_id,
+          flightId: assignment.id,
+          holeNumber: selectedHole,
+        });
+
+        setClosestEntry(entry);
+        setClosestPlayerId(entry?.player_id ?? "");
+        setClosestDistance(
+          entry?.distance_meters ?? ""
+        );
+      } catch (error) {
+        console.error(
+          "Fejl ved hentning af tættest på pinden:",
+          error
+        );
+        setClosestError(
+          error.message ??
+            "Registreringen kunne ikke hentes."
+        );
+      } finally {
+        setClosestLoading(false);
+      }
+    }
+
+    loadClosestEntry();
+  }, [
+    assignment?.round_id,
+    assignment?.id,
+    selectedHole,
+    isClosestToPinHole,
+  ]);
+
+  async function handleSaveClosest() {
+    if (!assignment || !isClosestToPinHole) {
+      return;
+    }
+
+    setClosestLoading(true);
+    setClosestMessage("");
+    setClosestError("");
+
+    try {
+      const entry = await saveClosestToPinEntry({
+        roundId: assignment.round_id,
+        flightId: assignment.id,
+        holeNumber: selectedHole,
+        playerId: closestPlayerId,
+        distanceMeters: closestDistance,
+      });
+
+      setClosestEntry(entry);
+      setClosestMessage(
+        `Kandidat på hul ${selectedHole} er gemt.`
+      );
+    } catch (error) {
+      console.error(
+        "Fejl ved gemning af tættest på pinden:",
+        error
+      );
+      setClosestError(
+        error.message ??
+          "Registreringen kunne ikke gemmes."
+      );
+    } finally {
+      setClosestLoading(false);
+    }
+  }
+
+  async function handleDeleteClosest() {
+    if (!assignment || !closestEntry) {
+      return;
+    }
+
+    setClosestLoading(true);
+    setClosestMessage("");
+    setClosestError("");
+
+    try {
+      await deleteClosestToPinEntry({
+        roundId: assignment.round_id,
+        flightId: assignment.id,
+        holeNumber: selectedHole,
+      });
+
+      setClosestEntry(null);
+      setClosestPlayerId("");
+      setClosestDistance("");
+      setClosestMessage(
+        `Kandidaten på hul ${selectedHole} er slettet.`
+      );
+    } catch (error) {
+      console.error(
+        "Fejl ved sletning af tættest på pinden:",
+        error
+      );
+      setClosestError(
+        error.message ??
+          "Registreringen kunne ikke slettes."
+      );
+    } finally {
+      setClosestLoading(false);
+    }
+  }
+
   const completedHoles = holes.filter(
     (hole) =>
       players.length > 0 &&
@@ -1067,6 +1323,162 @@ function MarkerDashboard({
                     );
                   })}
                 </div>
+
+                {isClosestToPinHole && (
+                  <section
+                    style={{
+                      marginTop: 20,
+                      padding: 18,
+                      borderRadius: 14,
+                      border: "1px solid #d7e5da",
+                      background: "#eef7f0",
+                    }}
+                  >
+                    <p className="eyebrow">
+                      Tættest på pinden
+                    </p>
+                    <h3 style={{ margin: "4px 0 8px" }}>
+                      Boldens kandidat på hul {selectedHole}
+                    </h3>
+                    <p
+                      style={{
+                        margin: "0 0 16px",
+                        color: "#68756f",
+                      }}
+                    >
+                      Registrér kun boldens bedste spiller,
+                      hvis mindst én bold ligger på green.
+                    </p>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "minmax(180px, 1fr) minmax(130px, 180px)",
+                        gap: 12,
+                      }}
+                    >
+                      <select
+                        value={closestPlayerId}
+                        onChange={(event) => {
+                          setClosestPlayerId(
+                            event.target.value
+                          );
+                          setClosestMessage("");
+                          setClosestError("");
+                        }}
+                        disabled={closestLoading}
+                        style={{
+                          width: "100%",
+                          padding: 12,
+                          borderRadius: 10,
+                          border: "1px solid #bdc9c1",
+                          background: "white",
+                        }}
+                      >
+                        <option value="">
+                          Vælg spiller
+                        </option>
+                        {players.map((player) => (
+                          <option
+                            key={player.id}
+                            value={player.id}
+                          >
+                            {player.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.01"
+                        value={closestDistance}
+                        onChange={(event) => {
+                          setClosestDistance(
+                            event.target.value
+                          );
+                          setClosestMessage("");
+                          setClosestError("");
+                        }}
+                        disabled={closestLoading}
+                        placeholder="Meter, fx 1.42"
+                        style={{
+                          width: "100%",
+                          padding: 12,
+                          borderRadius: 10,
+                          border: "1px solid #bdc9c1",
+                          background: "white",
+                        }}
+                      />
+                    </div>
+
+                    {closestError && (
+                      <div
+                        className="error-box"
+                        style={{ margin: "14px 0 0" }}
+                      >
+                        {closestError}
+                      </div>
+                    )}
+
+                    {closestMessage && (
+                      <div
+                        style={{
+                          marginTop: 14,
+                          padding: 12,
+                          borderRadius: 10,
+                          background: "#e1f2e5",
+                          color: "#176334",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {closestMessage}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          closestEntry ? "1fr 1fr" : "1fr",
+                        gap: 10,
+                        marginTop: 14,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={handleSaveClosest}
+                        disabled={
+                          closestLoading ||
+                          !closestPlayerId ||
+                          closestDistance === ""
+                        }
+                        className="login-submit-button"
+                        style={{ marginTop: 0 }}
+                      >
+                        {closestLoading
+                          ? "Gemmer..."
+                          : closestEntry
+                            ? "Opdatér kandidat"
+                            : "Gem kandidat"}
+                      </button>
+
+                      {closestEntry && (
+                        <button
+                          type="button"
+                          onClick={handleDeleteClosest}
+                          disabled={closestLoading}
+                          className="login-cancel-button"
+                          style={{ marginTop: 0 }}
+                        >
+                          Slet kandidat
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                )}
 
                 {saveError && (
                   <div

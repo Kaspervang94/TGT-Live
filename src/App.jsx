@@ -22,6 +22,7 @@ import {
   getFinalFlightsPreview,
   validateFinalFlightsPreview,
 } from "./lib/finalFlights";
+import { getFinalStandings } from "./lib/finalStandings";
 
 function formatScore(score) {
   if (score === null || score === undefined) {
@@ -98,6 +99,7 @@ function Leaderboard({ onOpenLogin }) {
   const [teamData, setTeamData] = useState(null);
   const [closestEntries, setClosestEntries] = useState([]);
   const [approvedBonuses, setApprovedBonuses] = useState([]);
+  const [finalStandingsData, setFinalStandingsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -154,6 +156,21 @@ function Leaderboard({ onOpenLogin }) {
       setTeamData(currentTeamData);
       setClosestEntries(currentClosestEntries);
       setApprovedBonuses(currentApprovedBonuses);
+
+      try {
+        const currentFinalStandings = await getFinalStandings({
+          season: 2026,
+          roundSixNumber: 6,
+          roundSevenNumber: 7,
+        });
+        setFinalStandingsData(currentFinalStandings);
+      } catch (finalError) {
+        console.error(
+          "Finalestillingen kunne ikke hentes:",
+          finalError
+        );
+        setFinalStandingsData(null);
+      }
     } catch (error) {
       console.error("Fejl ved hentning af TGT-data:", error);
       setErrorMessage(error.message ?? "Data kunne ikke hentes.");
@@ -236,6 +253,14 @@ function Leaderboard({ onOpenLogin }) {
       description:
         "Den korteste registrerede afstand på hvert par 3-hul vises som den aktuelle fører.",
     },
+    final: {
+      eyebrow: "Individuel finale",
+      title: finalStandingsData?.finalCompleted
+        ? "Endelig TGT-stilling"
+        : "Foreløbig TGT-stilling",
+      description:
+        "Halveret grundspil plus officiel score fra Runde 6 og Runde 7. Godkendte bonusser indgår kun efter 18 huller i den relevante runde.",
+    },
   };
 
   const currentHeading = headings[tab];
@@ -296,6 +321,13 @@ function Leaderboard({ onOpenLogin }) {
               className={tab === "closest" ? "login-submit-button" : "login-cancel-button"}
             >
               Tættest på pinden
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("final")}
+              className={tab === "final" ? "login-submit-button" : "login-cancel-button"}
+            >
+              Samlet finalestilling
             </button>
           </div>
 
@@ -520,6 +552,114 @@ function Leaderboard({ onOpenLogin }) {
               {parThreeHoles.length === 0 && (
                 <div className="status-box">
                   Der blev ikke fundet par 3-huller på banen.
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loading && !errorMessage && tab === "final" && (
+            <div>
+              {finalStandingsData ? (
+                <>
+                  {finalStandingsData.champion && (
+                    <section
+                      style={{
+                        margin: 20,
+                        padding: 22,
+                        borderRadius: 18,
+                        color: "#ffffff",
+                        background:
+                          "linear-gradient(135deg, #0b4935, #18704e)",
+                      }}
+                    >
+                      <p
+                        className="eyebrow"
+                        style={{ color: "#dafaaf" }}
+                      >
+                        TGT-mester 2026
+                      </p>
+                      <h2 style={{ margin: "5px 0" }}>
+                        {finalStandingsData.champion.playerName}
+                      </h2>
+                      <strong style={{ fontSize: 24 }}>
+                        {formatScore(
+                          finalStandingsData.champion.finalScore
+                        )}
+                      </strong>
+                    </section>
+                  )}
+
+                  {!finalStandingsData.finalCompleted && (
+                    <div className="status-box">
+                      Foreløbig stilling. {finalStandingsData.completedPlayers} af 15
+                      spillere har gennemført hele finaleforløbet.
+                    </div>
+                  )}
+
+                  <div className="table-wrapper">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th className="position-column">Placering</th>
+                          <th>Spiller</th>
+                          <th className="number-column">Udgangspunkt</th>
+                          <th className="number-column">Runde 6</th>
+                          <th className="number-column">Runde 7</th>
+                          <th className="number-column">Samlet</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {finalStandingsData.standings.map((player) => (
+                          <tr key={player.playerId}>
+                            <td className="position-column">
+                              <span
+                                className={`position-badge position-${player.position}`}
+                              >
+                                {player.position}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="player-name">
+                                {player.playerName}
+                              </span>
+                              <small
+                                style={{
+                                  display: "block",
+                                  color: "#78827d",
+                                }}
+                              >
+                                Runde 6: {player.roundSixHoles}/18 · Runde 7:{" "}
+                                {player.roundSevenHoles}/18
+                              </small>
+                            </td>
+                            <td className="number-column">
+                              {formatScore(player.startingScore)}
+                            </td>
+                            <td className="number-column">
+                              {player.roundSixHoles === 0
+                                ? "Ikke startet"
+                                : formatScore(player.roundSixOfficialScore)}
+                            </td>
+                            <td className="number-column">
+                              {player.roundSevenHoles === 0
+                                ? "Ikke startet"
+                                : formatScore(player.roundSevenOfficialScore)}
+                            </td>
+                            <td className="number-column final-score">
+                              {player.finalCompleted
+                                ? formatScore(player.finalScore)
+                                : "Afventer"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="status-box">
+                  Finalestillingen kunne ikke beregnes endnu. Kontrollér, at
+                  Runde 6 og Runde 7 findes og har deltagere.
                 </div>
               )}
             </div>
@@ -1148,6 +1288,8 @@ function MarkerDashboard({
   onLogout,
 }) {
   const [assignment, setAssignment] = useState(null);
+  const [availableAssignments, setAvailableAssignments] = useState([]);
+  const [selectedRoundNumber, setSelectedRoundNumber] = useState(null);
   const [players, setPlayers] = useState([]);
   const [holes, setHoles] = useState([]);
   const [existingScores, setExistingScores] =
@@ -1251,23 +1393,53 @@ function MarkerDashboard({
         return;
       }
 
-      const markerAssignment = markerRows?.find(
-        (row) =>
-          row.flights?.rounds?.round_number === 6
-      );
-
-      if (!markerAssignment?.flights) {
-        setAssignmentError(
-          "Dette login er ikke knyttet til en bold i runde 6."
+      const assignments = (markerRows ?? [])
+        .map((row) => row.flights)
+        .filter((flight) => flight?.rounds)
+        .sort(
+          (a, b) =>
+            a.rounds.round_number -
+            b.rounds.round_number
         );
 
+      setAvailableAssignments(assignments);
+
+      if (assignments.length === 0) {
+        setAssignmentError(
+          "Dette login er ikke knyttet til en aktiv bold."
+        );
         setLoading(false);
         return;
       }
 
-      const flight = markerAssignment.flights;
+      if (selectedRoundNumber === null) {
+        if (assignments.length === 1) {
+          setSelectedRoundNumber(
+            assignments[0].rounds.round_number
+          );
+        }
+        setLoading(false);
+        return;
+      }
+
+      const flight = assignments.find(
+        (item) =>
+          item.rounds.round_number ===
+          selectedRoundNumber
+      );
+
+      if (!flight) {
+        setAssignmentError(
+          "Den valgte runde er ikke knyttet til dette login."
+        );
+        setLoading(false);
+        return;
+      }
 
       setAssignment(flight);
+      setSelectedHole(1);
+      setSaveMessage("");
+      setSaveError("");
 
       const {
         data: flightPlayerRows,
@@ -1374,7 +1546,20 @@ function MarkerDashboard({
     }
 
     loadMarkerFlight();
-  }, [session.user.id]);
+  }, [session.user.id, selectedRoundNumber]);
+
+  function handleSelectRound(roundNumber) {
+    setAssignment(null);
+    setPlayers([]);
+    setHoles([]);
+    setExistingScores([]);
+    setDraftScores({});
+    setClosestEntry(null);
+    setClosestPlayerId("");
+    setClosestDistance("");
+    setAssignmentError("");
+    setSelectedRoundNumber(roundNumber);
+  }
 
   function handleScoreChange(
     playerId,
@@ -1633,13 +1818,27 @@ function MarkerDashboard({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onLogout}
-            className="logout-button"
-          >
-            Log ud
-          </button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {assignment && availableAssignments.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAssignment(null);
+                  setSelectedRoundNumber(null);
+                }}
+                className="logout-button"
+              >
+                Skift runde
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onLogout}
+              className="logout-button"
+            >
+              Log ud
+            </button>
+          </div>
         </div>
 
         {loading && (
@@ -1647,6 +1846,73 @@ function MarkerDashboard({
             Henter bold, spillere og scorekort...
           </div>
         )}
+
+        {!loading &&
+          !assignmentError &&
+          selectedRoundNumber === null &&
+          availableAssignments.length > 1 && (
+            <section style={{ padding: 22 }}>
+              <p className="eyebrow">Vælg spilledag</p>
+              <h2 style={{ margin: "4px 0 8px" }}>
+                Hvilken runde vil du føre score for?
+              </h2>
+              <p className="description">
+                Det samme bold-login kan bruges på begge finaledage.
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: 14,
+                  marginTop: 20,
+                }}
+              >
+                {availableAssignments.map((flight) => (
+                  <button
+                    type="button"
+                    key={flight.id}
+                    onClick={() =>
+                      handleSelectRound(
+                        flight.rounds.round_number
+                      )
+                    }
+                    style={{
+                      padding: 20,
+                      textAlign: "left",
+                      border: "1px solid #d6e1d9",
+                      borderRadius: 16,
+                      background: "#f7faf7",
+                      color: "#17271f",
+                    }}
+                  >
+                    <span className="eyebrow">
+                      {formatDate(flight.rounds.played_at)}
+                    </span>
+                    <strong
+                      style={{
+                        display: "block",
+                        marginTop: 8,
+                        fontSize: 20,
+                      }}
+                    >
+                      Runde {flight.rounds.round_number} · {flight.name}
+                    </strong>
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: 8,
+                        color: "#68756f",
+                      }}
+                    >
+                      Starttid {formatTime(flight.tee_time)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
 
         {!loading && assignmentError && (
           <div className="error-box">

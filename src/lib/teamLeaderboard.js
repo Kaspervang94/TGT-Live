@@ -1,142 +1,65 @@
 import { supabase } from "./supabase";
 import { calculateBestBallLeaderboard } from "./netScoreEngine";
 
-/**
- * Henter og beregner holdleaderboardet til TGT-holdfinalen.
- *
- * Regler:
- * - Runde 6
- * - 100 % spillehandicap
- * - Best Ball hul for hul
- * - Laveste nettoscore på hvert hul tæller
- * - Begge holdspillere skal have registreret en score,
- *   før holdets hul tæller som afsluttet
- * - Spillere med team_competition = false medtages ikke
- */
-export async function getTeamLea*erboard({
-  season*= 2026,
+export async function getTeamLeaderboard({
+  season = 2026,
   roundNumber = 6,
 } = {}) {
-  /*
-   * 1. Find den ønskede runde.
-   */
-  const {
-    data: round,
-    *rror: roundError,
-  } = await supa*ase
+  const { data: round, error: roundError } = await supabase
     .from("rounds")
-    .selec*(`
+    .select(`
       id,
       tournament_id,
-*     course_id,
-      round_number*
+      course_id,
+      round_number,
       name,
       played_at,
-    * status,
+      status,
       team_enabled,
-     *tournaments!*nner (
+      tournaments!inner (
         id,
         season
-*     )
+      )
     `)
-    .eq("tournaments*season", season)
-    .eq("round_nu*ber", roundNumber)
+    .eq("tournaments.season", season)
+    .eq("round_number", roundNumber)
     .single();
-*  if (roundError) {
-    throw roun*Error;
-  }
 
-  if (!round) {
-    th*ow new Error(
-      `Runde ${round*umber} blev ikke fundet.`
-    );
- *}
-
+  if (roundError) throw roundError;
+  if (!round) throw new Error(`Runde ${roundNumber} blev ikke fundet.`);
   if (!round.team_enabled) {
-  * throw new Error(
-      `Holdturne*ingen er ikke aktiveret i Runde ${*oundNumber}.`
-    );
+    throw new Error(`Holdturneringen er ikke aktiveret i Runde ${roundNumber}.`);
+  }
+  if (!round.course_id) {
+    throw new Error(`Runde ${roundNumber} har ingen golfbane tilknyttet.`);
   }
 
-  if (!r*und.course_id) {
-    throw new Err*r(
-      `Runde ${roundNumber} har ingen golfbane tilknyttet.`
-    );
-  }
-
-  /*
-   * 2. Hent banens huller med par og stroke index.
-   */
-  const {
-    data: holes,
-    e*ror: holesError,
-  } = await supab*se
+  const { data: holes, error: holesError } = await supabase
     .from("course_holes")
-    .*elect(`
-      hole_number,
-      p*r,
-      stroke_index
-    `)
-    .*q("course_id", round.course_id)
-  * .order("hole_number", {
-      asc*nding: true,
-    });
+    .select("hole_number, par, stroke_index")
+    .eq("course_id", round.course_id)
+    .order("hole_number", { ascending: true });
 
-  if (holesE*ror) {
-    throw holesError;
-  }
-
+  if (holesError) throw holesError;
   if (!holes || holes.length === 0) {
-    throw new Error(
-      "Banens scorekort kunne ikke findes."
-    );
+    throw new Error("Banens scorekort kunne ikke findes.");
   }
 
-  /*
-   * 3. Hent alle aktive hold i TGT 2026.
-   */
-  const {
-    data: te*mRows,
-    error: teamsError,
-  } * await supabase
-    .from("teams")*    .select(`
-      id,
-      name*
-      active
-    `)
-    .eq("tour*ament_id", round.tournament_id)
-  * .eq("active", true)
-    .order("n*me", {
-      ascending: true,
-    *);
+  const { data: teamRows, error: teamsError } = await supabase
+    .from("teams")
+    .select("id, name, active")
+    .eq("tournament_id", round.tournament_id)
+    .eq("active", true)
+    .order("name", { ascending: true });
 
-  if (teamsError) {
-    throw *eamsError;
-  }
+  if (teamsError) throw teamsError;
 
-  const teamIds = (teamRows ?? []).map(
-    (team) => team.id
-  );
-
+  const teamIds = (teamRows ?? []).map((team) => team.id);
   if (teamIds.length === 0) {
-    return {
-      round,
-      holes,
-      teams: [],
-      leaderboard: [],
-    };
+    return { round, holes, teams: [], scores: [], leaderboard: [] };
   }
 
-  /*
-   * 4. Hent medlemmerne af de aktive hold.
-   *
-   * team_competition bruges til at udelukke spillere,
-   * som kun deltager individuelt.
-   */
-  const {
-    data: membershipRows,
-    error: membershipsError,
-  } = await supabase
+  const { data: membershipRows, error: membershipsError } = await supabase
     .from("team_members")
     .select(`
       team_id,
@@ -151,162 +74,78 @@ export async function getTeamLea*erboard({
     `)
     .in("team_id", teamIds);
 
-  if (membershipsError) {
-    throw membershipsError;
-  }
+  if (membershipsError) throw membershipsError;
 
-  const eligibleMemberships = (
-    membershipRows ?? []
-  ).filter(
+  const eligibleMemberships = (membershipRows ?? []).filter(
     (membership) =>
       membership.players?.active === true &&
       membership.players?.team_competition !== false
   );
 
   const playerIds = [
-    ...new Set(
-      eligibleMemberships.map(
-        (membership) => membership.player_id
-      )
-    ),
+    ...new Set(eligibleMemberships.map((membership) => membership.player_id)),
   ];
 
-  /*
-   * 5. Hent spillernes registrering på Runde 6.
-   *
-   * playing_handicap er rundens fastlåste spillehandicap.
-   * Det er denne værdi, nettoscore-motoren bruger.
-   */
   let roundPlayerRows = [];
-
   if (playerIds.length > 0) {
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from("round_players")
-      .select(`
-        player_id,
-        handicap_index,
-        playing_handicap,
-        status,
-        tee_id
-      `)
+      .select("player_id, handicap_index, playing_handicap, status, tee_id")
       .eq("round_id", round.id)
       .in("player_id", playerIds);
 
-    if (error) {
-      throw error;
-    }
-
+    if (error) throw error;
     roundPlayerRows = data ?? [];
   }
 
   const roundPlayerByPlayerId = new Map(
-    roundPlayerRows.map((roundPlayer) => [
-      roundPlayer.player_id,
-      roundPlayer,
-    ])
+    roundPlayerRows.map((roundPlayer) => [roundPlayer.player_id, roundPlayer])
   );
 
-  /*
-   * 6. Hent alle live-scores for holdspillerne.
-   */
   let scoreRows = [];
-
   if (playerIds.length > 0) {
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from("scores")
-      .select(`
-        player_id,
-        hole_number,
-        strokes,
-        updated_at
-      `)
+      .select("player_id, hole_number, strokes, updated_at")
       .eq("round_id", round.id)
       .in("player_id", playerIds);
 
-    if (error) {
-      throw error;
-    }
-
+    if (error) throw error;
     scoreRows = data ?? [];
   }
 
-  /*
-   * 7. Byg holdene i det format, som
-   * nettoscore-motoren forventer.
-   */
-  const teams = (teamRows ?? []).map(
-    (team) => {
-      const memberships =
-        eligibleMemberships.filter(
-          (membership) =>
-            membership.team_id === team.id
-        );
+  const teams = (teamRows ?? []).map((team) => {
+    const memberships = eligibleMemberships.filter(
+      (membership) => membership.team_id === team.id
+    );
 
-      const players = memberships.map(
-        (membership) => {
-          const player =
-            membership.players;
-
-          const roundPlayer =
-            roundPlayerByPlayerId.get(
-              membership.player_id
-            );
-
-          return {
-            playerId: player.id,
-            playerName: player.name,
-
-            /*
-             * Feltet findes på spilleren og beskytter
-             * mod, at en individuel spiller ved en fejl
-             * indgår i holdberegningen.
-             */
-            teamCompetition:
-              player.team_competition,
-
-            handicapIndex:
-              roundPlayer?.handicap_index ??
-              player.handicap_index ??
-              null,
-
-            /*
-             * Der anvendes 100 % spillehandicap.
-             * Vi ganger derfor ikke værdien med 0,85.
-             */
-            playingHandicap:
-              roundPlayer?.playing_handicap ??
-              0,
-
-            roundStatus:
-              roundPlayer?.status ??
-              "Ikke tilmeldt",
-          };
-        }
-      );
+    const players = memberships.map((membership) => {
+      const player = membership.players;
+      const roundPlayer = roundPlayerByPlayerId.get(membership.player_id);
 
       return {
-        teamId: team.id,
-        teamName: team.name,
-        players,
+        playerId: player.id,
+        playerName: player.name,
+        teamCompetition: player.team_competition,
+        handicapIndex:
+          roundPlayer?.handicap_index ?? player.handicap_index ?? null,
+        playingHandicap: roundPlayer?.playing_handicap ?? 0,
+        roundStatus: roundPlayer?.status ?? "Ikke tilmeldt",
       };
-    }
-  );
-
-  /*
-   * 8. Beregn Best Ball-leaderboardet.
-   */
-  const leaderboard =
-    calculateBestBallLeaderboard({
-      teams,
-      holes,
-      scores: scoreRows,
     });
+
+    return {
+      teamId: team.id,
+      teamName: team.name,
+      players,
+    };
+  });
+
+  const leaderboard = calculateBestBallLeaderboard({
+    teams,
+    holes,
+    scores: scoreRows,
+  });
 
   return {
     round,
@@ -317,25 +156,13 @@ export async function getTeamLea*erboard({
   };
 }
 
-/**
- * Opretter en Supabase Realtime-kanal til holdfinalen.
- *
- * callback køres, hver gang en score ændres.
- */
-export function subscribeToTeamLeaderboard({
-  roundId,
-  callback,
-}) {
+export function subscribeToTeamLeaderboard({ roundId, callback }) {
   if (!roundId) {
-    throw new Error(
-      "roundId mangler ved oprettelse af Realtime."
-    );
+    throw new Error("roundId mangler ved oprettelse af Realtime.");
   }
 
   const channel = supabase
-    .channel(
-      `tgt-team-leaderboard-${roundId}`
-    )
+    .channel(`tgt-team-leaderboard-${roundId}`)
     .on(
       "postgres_changes",
       {
@@ -344,12 +171,11 @@ export function subscribeToTeamLeaderboard({
         table: "scores",
         filter: `round_id=eq.${roundId}`,
       },
-      () => {
-        callback?.();
-      }
+      () => callback?.()
     )
     .subscribe();
 
   return () => {
     supabase.removeChannel(channel);
   };
+}

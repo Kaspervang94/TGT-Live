@@ -8,12 +8,20 @@ import {
 import { getLiveRoundLeaderboard } from "./lib/liveLeaderboard";
 import { getTeamLeaderboard } from "./lib/teamLeaderboard";
 import {
+  applyIndividualBonuses,
+  sortIndividualLeaderboard,
+} from "./lib/individualBonus";
+import {
   calculateClosestToPinLeaders,
   deleteClosestToPinEntry,
   getClosestToPinEntries,
   getFlightClosestEntry,
   saveClosestToPinEntry,
 } from "./lib/closestToPin";
+import {
+  getFinalFlightsPreview,
+  validateFinalFlightsPreview,
+} from "./lib/finalFlights";
 
 function formatScore(score) {
   if (score === null || score === undefined) {
@@ -89,6 +97,7 @@ function Leaderboard({ onOpenLogin }) {
   const [liveData, setLiveData] = useState(null);
   const [teamData, setTeamData] = useState(null);
   const [closestEntries, setClosestEntries] = useState([]);
+  const [approvedBonuses, setApprovedBonuses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -120,10 +129,31 @@ function Leaderboard({ onOpenLogin }) {
         ? await getClosestToPinEntries(currentLiveData.round.id)
         : [];
 
+      let currentApprovedBonuses = [];
+
+      if (currentLiveData?.round?.id) {
+        const { data: bonusRows, error: bonusError } = await supabase
+          .from("closest_to_pin")
+          .select(`
+            id,
+            round_id,
+            hole_number,
+            player_id,
+            bonus_strokes,
+            approved
+          `)
+          .eq("round_id", currentLiveData.round.id)
+          .eq("approved", true);
+
+        if (bonusError) throw bonusError;
+        currentApprovedBonuses = bonusRows ?? [];
+      }
+
       setStandings(sortStandings(data));
       setLiveData(currentLiveData);
       setTeamData(currentTeamData);
       setClosestEntries(currentClosestEntries);
+      setApprovedBonuses(currentApprovedBonuses);
     } catch (error) {
       console.error("Fejl ved hentning af TGT-data:", error);
       setErrorMessage(error.message ?? "Data kunne ikke hentes.");
@@ -151,6 +181,15 @@ function Leaderboard({ onOpenLogin }) {
         },
         loadData
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "closest_to_pin",
+        },
+        loadData
+      )
       .subscribe();
 
     return () => {
@@ -158,7 +197,12 @@ function Leaderboard({ onOpenLogin }) {
     };
   }, [loadData]);
 
-  const liveLeaderboard = liveData?.leaderboard ?? [];
+  const liveLeaderboard = sortIndividualLeaderboard(
+    applyIndividualBonuses({
+      leaderboard: liveData?.leaderboard ?? [],
+      approvedBonuses,
+    })
+  );
   const teamLeaderboard = teamData?.leaderboard ?? [];
   const closestLeaders = calculateClosestToPinLeaders(
     closestEntries
@@ -317,6 +361,8 @@ function Leaderboard({ onOpenLogin }) {
                     <th>Spiller</th>
                     <th className="number-column">Thru</th>
                     <th className="number-column">Brutto</th>
+                    <th className="number-column">Bonus</th>
+                    <th className="number-column">Officiel</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -334,8 +380,22 @@ function Leaderboard({ onOpenLogin }) {
                         </small>
                       </td>
                       <td className="number-column">{player.holesPlayed}</td>
+                      <td className="number-column score">
+                        {player.holesPlayed === 0
+                          ? "Ikke startet"
+                          : formatScore(player.scoreToPar)}
+                      </td>
+                      <td className="number-column">
+                        {player.earnedBonus > 0
+                          ? player.hasCompletedRound
+                            ? `-${player.appliedBonus}`
+                            : `${player.earnedBonus} afventer`
+                          : "–"}
+                      </td>
                       <td className="number-column final-score">
-                        {player.holesPlayed === 0 ? "Ikke startet" : formatScore(player.scoreToPar)}
+                        {player.holesPlayed === 0
+                          ? "Ikke startet"
+                          : formatScore(player.officialToPar)}
                       </td>
                     </tr>
                   ))}
@@ -518,11 +578,10 @@ function MarkerLogin({
 
         <p className="eyebrow">TGT 2026</p>
 
-        <h1>Markør-login</h1>
+        <h1>Markør- og admin-login</h1>
 
         <p className="description">
-          Log ind med den mail og adgangskode, der
-          tilhører bolden.
+          Log ind med boldens login eller din administratorbruger.
         </p>
 
         <form onSubmit={handleLogin}>
@@ -582,6 +641,503 @@ function MarkerLogin({
             Tilbage til leaderboard
           </button>
         </form>
+      </section>
+    </main>
+  );
+}
+
+function AdminClosestToPin({ session, onLogout }) {
+  const [roundId, setRoundId] = useState(null);
+  const [approvedWinners, setApprovedWinners] = useState([]);
+  const [finalPreview, setFinalPreview] = useState(null);
+  const [previewValidation, setPreviewValidation] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [finalizing, setFinalizing] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [creatingFlights, setCreatingFlights] = useState(false);
+  const [flightsCreated, setFlightsCreated] = useState(false);
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const loadAdminData = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage("");
+
+    try {
+      const { data: round, error: roundError } = await supabase
+        .from("rounds")
+        .select(`
+          id,
+          round_number,
+          name,
+          played_at,
+          tournaments!inner (
+            season
+          )
+        `)
+        .eq("tournaments.season", 2026)
+        .eq("round_number", 6)
+        .single();
+
+      if (roundError) throw roundError;
+      setRoundId(round.id);
+
+      const { data: winners, error: winnersError } = await supabase
+        .from("closest_to_pin")
+        .select(`
+          id,
+          hole_number,
+          distance_meters,
+          bonus_strokes,
+          approved,
+          players (
+            id,
+            name
+          )
+        `)
+        .eq("round_id", round.id)
+        .eq("approved", true)
+        .order("hole_number", { ascending: true });
+
+      if (winnersError) throw winnersError;
+      setApprovedWinners(winners ?? []);
+    } catch (error) {
+      console.error("Fejl ved hentning af admindata:", error);
+      setErrorMessage(
+        error.message ?? "Admindata kunne ikke hentes."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAdminData();
+  }, [loadAdminData]);
+
+  async function handleFinalizeClosestToPin() {
+    if (!roundId) return;
+
+    setFinalizing(true);
+    setMessage("");
+    setErrorMessage("");
+
+    try {
+      const { data, error } = await supabase.rpc(
+        "finalize_closest_to_pin",
+        { requested_round_id: roundId }
+      );
+
+      if (error) throw error;
+
+      setMessage(
+        `${data ?? 0} tættest-på-pinden-vindere er godkendt.`
+      );
+      await loadAdminData();
+    } catch (error) {
+      console.error("Fejl ved godkendelse af vindere:", error);
+      setErrorMessage(
+        error.message ?? "Vinderne kunne ikke godkendes."
+      );
+    } finally {
+      setFinalizing(false);
+    }
+  }
+
+  async function handleLoadFinalPreview() {
+    setLoadingPreview(true);
+    setMessage("");
+    setErrorMessage("");
+
+    try {
+      const preview = await getFinalFlightsPreview({
+        season: 2026,
+        sourceRoundNumber: 6,
+        finalRoundNumber: 7,
+      });
+
+      setFinalPreview(preview);
+      setPreviewValidation(
+        validateFinalFlightsPreview(preview)
+      );
+    } catch (error) {
+      console.error("Fejl ved forhåndsvisning af finalebolde:", error);
+      setFinalPreview(null);
+      setPreviewValidation(null);
+      setErrorMessage(
+        error.message ?? "Finaleboldene kunne ikke beregnes."
+      );
+    } finally {
+      setLoadingPreview(false);
+    }
+  }
+
+  async function handleCreateFinalFlights() {
+    if (
+      !finalPreview?.finalRound?.id ||
+      !previewValidation?.valid ||
+      !finalPreview.canGenerate
+    ) {
+      setErrorMessage(
+        "Finaleboldene kan ikke oprettes, før alle kontroller er godkendt."
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Vil du oprette finaleboldene i Runde 7? En eksisterende fordeling i Runde 7 bliver erstattet."
+    );
+
+    if (!confirmed) return;
+
+    setCreatingFlights(true);
+    setFlightsCreated(false);
+    setMessage("");
+    setErrorMessage("");
+
+    try {
+      const assignments = finalPreview.flights.flatMap((flight) =>
+        flight.players.map((player) => ({
+          player_id: player.playerId,
+          flight_number: flight.flightNumber,
+          playing_order: player.playingOrder,
+        }))
+      );
+
+      const { data, error } = await supabase.rpc(
+        "create_final_flights",
+        {
+          requested_final_round_id: finalPreview.finalRound.id,
+          assignments,
+        }
+      );
+
+      if (error) throw error;
+
+      setFlightsCreated(true);
+      setMessage(
+        `${data ?? 0} spillere er oprettet i finaleboldene på Runde 7.`
+      );
+    } catch (error) {
+      console.error("Fejl ved oprettelse af finalebolde:", error);
+      setErrorMessage(
+        error.message ?? "Finaleboldene kunne ikke oprettes."
+      );
+    } finally {
+      setCreatingFlights(false);
+    }
+  }
+
+  return (
+    <main className="marker-page">
+      <section className="marker-card">
+        <div className="marker-header">
+          <div>
+            <p className="eyebrow">TGT administration</p>
+            <h1>Finaleadministration</h1>
+            <p className="description">
+              Godkend tættest på pinden og kontrollér den beregnede
+              finalestilling, før spillerne senere oprettes i Runde 7.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onLogout}
+            className="logout-button"
+          >
+            Log ud
+          </button>
+        </div>
+
+        {loading && (
+          <div className="status-box">Henter admindata...</div>
+        )}
+
+        {!loading && errorMessage && (
+          <div className="error-box">
+            <strong>Handlingen kunne ikke gennemføres</strong>
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {!loading && (
+          <div style={{ padding: 22 }}>
+            <section
+              style={{
+                padding: 20,
+                border: "1px solid #e0e8e2",
+                borderRadius: 16,
+                background: "#f8faf8",
+              }}
+            >
+              <p className="eyebrow">Par 3-konkurrencen</p>
+              <h2 style={{ marginTop: 0 }}>Tættest på pinden</h2>
+
+              <button
+                type="button"
+                onClick={handleFinalizeClosestToPin}
+                disabled={finalizing || !roundId}
+                className="login-submit-button"
+                style={{ maxWidth: 360, marginTop: 8 }}
+              >
+                {finalizing
+                  ? "Godkender vindere..."
+                  : "Godkend tættest på pinden"}
+              </button>
+
+              {approvedWinners.length === 0 ? (
+                <div className="status-box" style={{ margin: "16px 0 0" }}>
+                  Der er endnu ingen godkendte vindere.
+                </div>
+              ) : (
+                <div className="table-wrapper" style={{ marginTop: 16 }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Hul</th>
+                        <th>Spiller</th>
+                        <th className="number-column">Afstand</th>
+                        <th className="number-column">Bonus</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {approvedWinners.map((winner) => (
+                        <tr key={winner.id}>
+                          <td>Hul {winner.hole_number}</td>
+                          <td>
+                            <span className="player-name">
+                              {winner.players?.name ?? "Ukendt spiller"}
+                            </span>
+                          </td>
+                          <td className="number-column">
+                            {Number(winner.distance_meters).toLocaleString(
+                              "da-DK",
+                              {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }
+                            )} meter
+                          </td>
+                          <td className="number-column final-score">
+                            -{winner.bonus_strokes} slag
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <section
+              style={{
+                marginTop: 24,
+                padding: 20,
+                border: "1px solid #d8e4db",
+                borderRadius: 16,
+                background: "#ffffff",
+              }}
+            >
+              <p className="eyebrow">12. september 2026</p>
+              <h2 style={{ marginTop: 0 }}>Forhåndsvis finalebolde</h2>
+              <p className="description">
+                Visningen skriver ikke noget til Runde 7. Den beregner kun
+                placeringerne og kontrollerer, om alle 15 spillere er klar.
+              </p>
+
+              <button
+                type="button"
+                onClick={handleLoadFinalPreview}
+                disabled={loadingPreview}
+                className="login-submit-button"
+                style={{ maxWidth: 360 }}
+              >
+                {loadingPreview
+                  ? "Beregner finalebolde..."
+                  : "Beregn og vis finalebolde"}
+              </button>
+
+              {finalPreview && (
+                <>
+                  <div className="flight-information" style={{ marginTop: 18 }}>
+                    <div>
+                      <span>Spillere</span>
+                      <strong>{finalPreview.standings.length}</strong>
+                    </div>
+                    <div>
+                      <span>Gennemført Runde 6</span>
+                      <strong>{finalPreview.completedPlayers} / 15</strong>
+                    </div>
+                    <div>
+                      <span>Validering</span>
+                      <strong>
+                        {previewValidation?.valid ? "Klar" : "Afventer"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Kan oprettes</span>
+                      <strong>{finalPreview.canGenerate ? "Ja" : "Nej"}</strong>
+                    </div>
+                  </div>
+
+                  {!previewValidation?.valid && (
+                    <div className="error-box" style={{ margin: "18px 0 0" }}>
+                      <strong>Finaleboldene kan ikke godkendes endnu</strong>
+                      {(previewValidation?.errors ?? []).map((error) => (
+                        <span key={error}>{error}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  <h2 style={{ marginTop: 28 }}>Foreløbig finalestilling</h2>
+                  <div className="table-wrapper" style={{ marginTop: 12 }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th className="position-column">Placering</th>
+                          <th>Spiller</th>
+                          <th className="number-column">Udgangspunkt</th>
+                          <th className="number-column">Runde 6</th>
+                          <th className="number-column">Samlet</th>
+                          <th className="number-column">Thru</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {finalPreview.standings.map((player) => (
+                          <tr key={player.playerId}>
+                            <td className="position-column">
+                              <span
+                                className={`position-badge position-${player.position}`}
+                              >
+                                {player.position}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="player-name">
+                                {player.playerName}
+                              </span>
+                            </td>
+                            <td className="number-column">
+                              {formatScore(player.startingScore)}
+                            </td>
+                            <td className="number-column">
+                              {player.holesPlayed === 0
+                                ? "Ikke startet"
+                                : formatScore(player.officialRoundScore)}
+                            </td>
+                            <td className="number-column final-score">
+                              {player.finalScore === null
+                                ? "Afventer"
+                                : formatScore(player.finalScore)}
+                            </td>
+                            <td className="number-column">
+                              {player.holesPlayed}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <h2 style={{ marginTop: 30 }}>Finalebolde</h2>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(250px, 1fr))",
+                      gap: 14,
+                      marginTop: 14,
+                    }}
+                  >
+                    {finalPreview.flights.map((flight) => (
+                      <article
+                        key={flight.flightNumber}
+                        style={{
+                          padding: 18,
+                          border: "1px solid #e0e8e2",
+                          borderRadius: 16,
+                          background:
+                            flight.flightNumber === 4
+                              ? "#eef7f0"
+                              : "#fafbf9",
+                        }}
+                      >
+                        <p className="eyebrow">
+                          Placering {flight.firstPosition} til {flight.lastPosition}
+                        </p>
+                        <h3 style={{ margin: "5px 0 12px" }}>
+                          {flight.flightName}
+                        </h3>
+
+                        {flight.players.map((player) => (
+                          <div
+                            key={player.playerId}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 12,
+                              padding: "9px 0",
+                              borderTop: "1px solid #e7ece8",
+                            }}
+                          >
+                            <span>
+                              {player.playingOrder}. {player.playerName}
+                            </span>
+                            <strong>
+                              {player.finalScore === null
+                                ? "Afventer"
+                                : formatScore(player.finalScore)}
+                            </strong>
+                          </div>
+                        ))}
+                      </article>
+                    ))}
+                  </div>
+
+                  <div className="status-box" style={{ margin: "22px 0 0" }}>
+                    {flightsCreated
+                      ? "Finaleboldene er oprettet i Runde 7."
+                      : "Dette er kun en forhåndsvisning. Ingen spillere er endnu oprettet i finaleboldene på Runde 7."}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleCreateFinalFlights}
+                    disabled={
+                      creatingFlights ||
+                      !previewValidation?.valid ||
+                      !finalPreview.canGenerate
+                    }
+                    className="login-submit-button"
+                    style={{ maxWidth: 420, marginTop: 16 }}
+                  >
+                    {creatingFlights
+                      ? "Opretter finalebolde..."
+                      : flightsCreated
+                        ? "Finalebolde er oprettet"
+                        : "Godkend og opret finalebolde"}
+                  </button>
+                </>
+              )}
+            </section>
+
+            {message && (
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 14,
+                  borderRadius: 10,
+                  background: "#e7f6eb",
+                  color: "#176334",
+                  fontWeight: 700,
+                }}
+              >
+                {message}
+              </div>
+            )}
+          </div>
+        )}
       </section>
     </main>
   );
@@ -1622,6 +2178,19 @@ export default function App() {
   }
 
   if (session) {
+    const isAdmin =
+      session.user.email?.toLowerCase() ===
+      "kasper.vang@soderbergpartners.dk";
+
+    if (isAdmin) {
+      return (
+        <AdminClosestToPin
+          session={session}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
     return (
       <MarkerDashboard
         session={session}

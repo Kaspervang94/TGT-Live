@@ -1,5 +1,5 @@
 import "./App.css";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
 import {
   getRoundScores,
@@ -42,6 +42,7 @@ import {
   getCourseTees,
   getSeasonRounds,
   summarizeSeasonRounds,
+  updateRoundStatus,
   updateSeasonRound,
 } from "./lib/roundAdmin";
 import {
@@ -69,6 +70,20 @@ function formatScore(score) {
   }
 
   return score > 0 ? `+${score}` : String(score);
+}
+
+function getInitials(name = "") {
+  return name.trim().split(/\s+/).filter(Boolean).slice(0, 2)
+    .map((part) => part[0]?.toUpperCase()).join("") || "TGT";
+}
+
+function getScoreMarkStyle(toPar) {
+  const base = { display: "inline-grid", placeItems: "center", minWidth: 30, height: 30, padding: "0 5px", fontWeight: 900, lineHeight: 1 };
+  if (toPar <= -2) return { ...base, border: "3px double #18864b", borderRadius: "50%", color: "#126738", background: "#e9f8ef" };
+  if (toPar === -1) return { ...base, border: "2px solid #28a45f", borderRadius: "50%", color: "#126738", background: "#effaf3" };
+  if (toPar === 1) return { ...base, border: "2px solid #c98b2e", borderRadius: 3, color: "#81530f", background: "#fff7e6" };
+  if (toPar >= 2) return { ...base, border: "3px double #b43b32", borderRadius: 3, color: "#8c241e", background: "#fff0ee" };
+  return { ...base, color: "#24372f" };
 }
 
 function formatDate(date) {
@@ -128,8 +143,12 @@ function sortStandings(data) {
 }
 
 function Leaderboard({ onOpenLogin }) {
-  const [mainTab, setMainTab] = useState(null);
+  const [mainTab, setMainTab] = useState("individual");
   const [tab, setTab] = useState("season");
+  const [selectedSeason, setSelectedSeason] = useState(2026);
+  const [availableSeasons, setAvailableSeasons] = useState([2026, 2027]);
+  const [profileSearch, setProfileSearch] = useState("");
+  const [directoryPlayerId, setDirectoryPlayerId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [standings, setStandings] = useState([]);
   const [liveData, setLiveData] = useState(null);
@@ -138,6 +157,17 @@ function Leaderboard({ onOpenLogin }) {
   const [approvedBonuses, setApprovedBonuses] = useState([]);
   const [finalStandingsData, setFinalStandingsData] = useState(null);
   const [hallOfFame, setHallOfFame] = useState([]);
+  const [publicRounds, setPublicRounds] = useState([]);
+  const [selectedPublicRoundId, setSelectedPublicRoundId] = useState(null);
+  const [seasonRoundHistory, setSeasonRoundHistory] = useState({});
+  const [teamRoundHistory, setTeamRoundHistory] = useState({});
+  const [historicalTeamStandings, setHistoricalTeamStandings] = useState([]);
+  const [selectedTeamId, setSelectedTeamId] = useState(null);
+  const [damebajerCounts, setDamebajerCounts] = useState({});
+  const [profilePlayerId, setProfilePlayerId] = useState(null);
+  const [playerDirectory, setPlayerDirectory] = useState({});
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [selectedPlayerMode, setSelectedPlayerMode] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -156,12 +186,144 @@ function Leaderboard({ onOpenLogin }) {
           counting_score,
           halved_score
         `)
-        .eq("season", 2026);
+        .eq("season", selectedSeason);
 
       if (error) throw error;
 
+      const { data: roundRows, error: publicRoundsError } = await supabase
+        .from("rounds")
+        .select(`
+          id,
+          round_number,
+          name,
+          played_at,
+          status,
+          individual_enabled,
+          team_enabled,
+          courses (club_name, course_name),
+          tournaments!inner (season)
+        `)
+        .eq("tournaments.season", selectedSeason)
+        .in("status", ["ready", "live", "submitted", "completed", "locked"])
+        .order("round_number", { ascending: true });
+
+      if (publicRoundsError) throw publicRoundsError;
+      setPublicRounds(roundRows ?? []);
+
+      // Spillerhistorikken hentes senere via en dedikeret visning.
+      // En historikfejl må aldrig blokere det offentlige leaderboard.
+      const [individualHistoryResult, teamHistoryResult, damebajerResult, playerDirectoryResult] = await Promise.all([
+        supabase
+          .from("round_results")
+          .select(`
+            player_id,
+            round_number,
+            score,
+            players (name),
+            tournaments!inner (season)
+          `)
+          .eq("tournaments.season", selectedSeason)
+          .not("score", "is", null)
+          .order("round_number", { ascending: true }),
+        supabase
+          .from("team_round_results")
+          .select(`
+            team_id,
+            round_number,
+            score,
+            teams (name),
+            tournaments!inner (season)
+          `)
+          .eq("tournaments.season", selectedSeason)
+          .not("score", "is", null)
+          .order("round_number", { ascending: true }),
+        supabase
+          .from("damebajere_public")
+          .select("player_id, round_id, hole_number"),
+        supabase
+          .from("players")
+          .select(`
+            id,
+            name,
+            handicap_index,
+            tournaments!inner (season)
+          `)
+          .eq("tournaments.season", selectedSeason),
+      ]);
+
+      if (individualHistoryResult.error) throw individualHistoryResult.error;
+      if (teamHistoryResult.error) throw teamHistoryResult.error;
+      if (damebajerResult.error) throw damebajerResult.error;
+      if (playerDirectoryResult.error) throw playerDirectoryResult.error;
+
+      setPlayerDirectory(
+        Object.fromEntries(
+          (playerDirectoryResult.data ?? []).map((playerData) => [
+            playerData.id,
+            playerData,
+          ])
+        )
+      );
+
+      const nextDamebajerCounts = {};
+      (damebajerResult.data ?? []).forEach((entry) => {
+        nextDamebajerCounts[entry.player_id] =
+          (nextDamebajerCounts[entry.player_id] ?? 0) + 1;
+      });
+      setDamebajerCounts(nextDamebajerCounts);
+
+      const individualHistoryByPlayer = {};
+      (individualHistoryResult.data ?? []).forEach((result) => {
+        individualHistoryByPlayer[result.player_id] ??= [];
+        individualHistoryByPlayer[result.player_id].push({
+          roundNumber: result.round_number,
+          roundName: `Runde ${result.round_number}`,
+          scoreToPar: result.score,
+          holesPlayed: 18,
+          hasScorecard: false,
+        });
+      });
+      setSeasonRoundHistory(individualHistoryByPlayer);
+
+      const teamHistoryById = {};
+      (teamHistoryResult.data ?? []).forEach((result) => {
+        teamHistoryById[result.team_id] ??= {
+          teamId: result.team_id,
+          teamName: result.teams?.name ?? "Ukendt hold",
+          rounds: [],
+        };
+        teamHistoryById[result.team_id].rounds.push({
+          roundNumber: result.round_number,
+          score: result.score,
+        });
+      });
+      setTeamRoundHistory(teamHistoryById);
+
+      const teamStandings = Object.values(teamHistoryById)
+        .map((team) => {
+          const bestFour = [...team.rounds]
+            .sort((a, b) => a.score - b.score)
+            .slice(0, 4);
+          const countingScore = bestFour.reduce(
+            (total, round) => total + round.score,
+            0
+          );
+          return {
+            ...team,
+            roundsPlayed: team.rounds.length,
+            countingScore,
+            halvedScore: Math.trunc(countingScore / 2),
+          };
+        })
+        .sort((a, b) =>
+          a.halvedScore !== b.halvedScore
+            ? a.halvedScore - b.halvedScore
+            : a.teamName.localeCompare(b.teamName, "da")
+        );
+      setHistoricalTeamStandings(teamStandings);
+
       const [currentLiveData, currentTeamData] = await Promise.all([
-        getLiveRoundLeaderboard(6),
+        getLiveRoundLeaderboard({ season: selectedSeason }),
         getTeamLeaderboard({ season: 2026, roundNumber: 6 }),
       ]);
 
@@ -223,7 +385,7 @@ function Leaderboard({ onOpenLogin }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedSeason]);
 
   useEffect(() => {
     loadData();
@@ -274,6 +436,31 @@ function Leaderboard({ onOpenLogin }) {
     (hole) => Number(hole.par) === 3
   );
 
+  async function openRound(round) {
+    if (!round?.id) return;
+
+    setLoading(true);
+    setErrorMessage("");
+    setSelectedPlayer(null);
+    setSelectedPlayerMode(null);
+
+    try {
+      const roundLeaderboard = await getLiveRoundLeaderboard({
+        season: selectedSeason,
+        roundId: round.id,
+      });
+      setSelectedPublicRoundId(round.id);
+      setLiveData(roundLeaderboard);
+      setMainTab("individual");
+      setTab("live");
+    } catch (error) {
+      console.error("Runden kunne ikke åbnes:", error);
+      setErrorMessage(error.message ?? "Runden kunne ikke åbnes.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!menuOpen) return undefined;
 
@@ -286,6 +473,17 @@ function Leaderboard({ onOpenLogin }) {
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [menuOpen]);
+
+  function switchSeason(season) {
+    setSelectedSeason(season);
+    setSelectedPlayer(null);
+    setSelectedTeamId(null);
+    setProfilePlayerId(null);
+    setDirectoryPlayerId(null);
+    setMainTab("individual");
+    setTab("season");
+    setMenuOpen(false);
+  }
 
   function openPublicView(nextMainTab, nextTab) {
     setMainTab(nextMainTab);
@@ -301,7 +499,7 @@ function Leaderboard({ onOpenLogin }) {
         "De fire laveste rundescores tæller. Den samlede score halveres efter fire tællende runder.",
     },
     live: {
-      eyebrow: "Live fra Lübker",
+      eyebrow: "Live fra sæsonen",
       title: liveData?.round?.name ?? "Runde 6 live",
       description:
         "Bruttoscoren vises i forhold til par og opdateres automatisk, når markørerne gemmer et hul.",
@@ -326,6 +524,27 @@ function Leaderboard({ onOpenLogin }) {
       description:
         "Halveret grundspil plus officiel score fra Runde 6 og Runde 7. Godkendte bonusser indgår kun efter 18 huller i den relevante runde.",
     },
+    "team-season": {
+      eyebrow: "Holdturnering",
+      title: "Aktuel holdstilling",
+      description: "De fire bedste holdrunder tæller. Åbn Hold for at se holdsammensætning og runde-for-runde-historik.",
+    },
+    teams: {
+      eyebrow: `TGT ${selectedSeason}`,
+      title: "Hold",
+      description: "Se alle hold, deres placering og resultater runde for runde.",
+    },
+    profiles: {
+      eyebrow: `TGT ${selectedSeason}`,
+      title: "Spillere",
+      description: "Se alle spillere samlet og åbn deres profil uden at gå gennem leaderboardet.",
+    },
+    rounds: {
+      eyebrow: `TGT ${selectedSeason}`,
+      title: "Sæsonens runder",
+      description:
+        "Se startlister, følg publicerede runder live og find officielle resultater.",
+    },
     hall: {
       eyebrow: "TGT historik",
       title: "Hall of Fame",
@@ -340,16 +559,240 @@ function Leaderboard({ onOpenLogin }) {
     <div className="app tgt-public-shell">
       <style>{`
         .tgt-public-shell { background: #f3efe6; min-height: 100vh; }
-        .tgt-public-topbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: 14px clamp(18px, 4vw, 54px); background: rgba(7, 43, 31, .96); color: #fff; backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.12); }
-        .tgt-wordmark { display: flex; align-items: center; gap: 12px; font-weight: 900; letter-spacing: .12em; }
+        .tgt-public-topbar { position: relative; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: 14px clamp(18px, 4vw, 54px); background: rgba(7, 43, 31, .96); color: #fff; backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.12); }
+        .tgt-public-shell main { width: 100%; }
+        .tgt-public-shell .leaderboard-card { width: min(1180px, calc(100% - 32px)); margin-left: auto; margin-right: auto; }
+        .tgt-premium-hero { text-align: center; }
+        .tgt-hero-inner { display: flex; flex-direction: column; align-items: center; }
+        .tgt-premium-hero h1 { margin-left: auto; margin-right: auto; }
+        .tgt-hero-meta, .tgt-hero-actions { justify-content: center; }
+        .tgt-hof-grid { width: min(1040px, 100%); margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 22px; }
+        .tgt-hof-card { position: relative; overflow: hidden; min-height: 430px; padding: 26px; border-radius: 24px; border: 1px solid rgba(240,207,130,.58); color: #f3d98f; background: radial-gradient(circle at 50% 0%, rgba(255,231,160,.18), transparent 26%), radial-gradient(circle at 110% 90%, rgba(199,154,66,.18), transparent 36%), linear-gradient(150deg, #031f17 0%, #073c2b 55%, #0a5039 100%); box-shadow: 0 24px 65px rgba(3,31,23,.24), inset 0 1px 0 rgba(255,241,184,.12); transition: transform .2s ease, box-shadow .2s ease; }
+        .tgt-hof-card:hover { transform: translateY(-4px); box-shadow: 0 32px 78px rgba(3,31,23,.30), inset 0 1px 0 rgba(255,241,184,.16); }
+        .tgt-hof-card:before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, transparent 20%, rgba(255,238,169,.08) 43%, transparent 62%); }
+        .tgt-hof-top { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 24px; }
+        .tgt-hof-trophy { width: 94px; height: 94px; display: grid; place-items: center; margin-bottom: 14px; border-radius: 50%; border: 1px solid rgba(255,230,151,.76); background: radial-gradient(circle at 32% 22%, #fff0ae 0%, #d9ad51 42%, #9d691d 100%); box-shadow: 0 14px 36px rgba(211,165,73,.32), 0 0 0 8px rgba(240,207,130,.06); font-size: 48px; }
+        .tgt-hof-year { margin: 0; font-family: Georgia, serif; font-size: clamp(48px, 7vw, 68px); line-height: .95; letter-spacing: -.04em; background: linear-gradient(112deg, #a97724 0%, #d7b159 25%, #fff0ad 50%, #d5a94d 75%, #f1d484 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 6px 18px rgba(0,0,0,.22)); }
+        .tgt-hof-kicker { margin: 8px 0 0; color: #c9aa60; font-size: 10px; font-weight: 900; letter-spacing: .22em; text-transform: uppercase; }
+        .tgt-hof-winner { position: relative; padding: 17px 18px; border-radius: 16px; border: 1px solid rgba(240,207,130,.28); background: rgba(1,24,17,.48); text-align: center; }
+        .tgt-hof-winner + .tgt-hof-winner { margin-top: 12px; }
+        .tgt-hof-winner span { display: block; margin-bottom: 7px; color: #c6a75d; font-size: 10px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+        .tgt-hof-winner strong { display: block; color: #f7df99; font-family: Georgia, serif; font-size: 21px; line-height: 1.2; }
+        .tgt-hof-course { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; padding-top: 17px; border-top: 1px solid rgba(240,207,130,.22); color: rgba(247,223,153,.72); font-size: 13px; font-weight: 700; text-align: center; }
+
+        .tgt-wordmark { display: flex; align-items: center; gap: 12px; font-weight: 900; letter-spacing: .12em; color: #e8c66f; }
+        .tgt-profile-kpis {
+          gap: 12px !important;
+          padding: 0 !important;
+          background: transparent !important;
+        }
+        .tgt-profile-kpis > div {
+          min-height: 92px;
+          display: flex !important;
+          flex-direction: column;
+          align-items: flex-start !important;
+          justify-content: center;
+          gap: 10px;
+          padding: 16px 18px !important;
+          background: linear-gradient(145deg, #073727, #0a4935) !important;
+          border: 1px solid rgba(240, 207, 130, .42) !important;
+          border-radius: 14px !important;
+          color: #f0cf82 !important;
+          box-shadow: inset 0 0 0 1px rgba(240, 207, 130, .05);
+        }
+        .tgt-profile-kpis > div span {
+          color: #d4b45f !important;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: .09em;
+          text-transform: uppercase;
+        }
+        .tgt-profile-kpis > div strong {
+          color: #f5dc93 !important;
+          font-size: 24px;
+          line-height: 1;
+        }
+        .tgt-public-shell {
+          background:
+            radial-gradient(circle at 12% 5%, rgba(199,154,66,.10), transparent 25%),
+            linear-gradient(180deg, #ede8dc 0%, #f7f4ed 45%, #ece6d9 100%) !important;
+        }
+        .tgt-premium-hero {
+          min-height: 430px;
+          display: flex;
+          align-items: center;
+          background:
+            radial-gradient(circle at 82% 18%, rgba(236,202,119,.25), transparent 22%),
+            radial-gradient(circle at 68% 80%, rgba(23,113,77,.32), transparent 35%),
+            linear-gradient(135deg, #031f17 0%, #073b2a 50%, #0b5239 100%) !important;
+          border-bottom: 1px solid rgba(231,200,115,.35);
+        }
+        .tgt-hero-inner { position: relative; z-index: 2; width: min(1180px, 100%); }
+        .tgt-hero-live {
+          border: 1px solid rgba(240,207,130,.4) !important;
+          background: rgba(3,31,23,.66) !important;
+          box-shadow: 0 18px 50px rgba(0,0,0,.18);
+        }
+        .tgt-public-card {
+          border: 1px solid rgba(25,65,48,.10) !important;
+          border-radius: 24px !important;
+          overflow: hidden;
+          box-shadow: 0 22px 70px rgba(18,48,36,.12) !important;
+        }
+        .tgt-season-leaderboard table { border-collapse: separate; border-spacing: 0 8px; padding: 8px 12px 16px; }
+        .tgt-season-leaderboard thead th { border: 0; color: #7b846f; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+        .tgt-season-leaderboard tbody > tr:not(:has(td[colspan])) > td {
+          background: #fffdf7;
+          border-top: 1px solid rgba(33,72,55,.08);
+          border-bottom: 1px solid rgba(33,72,55,.08);
+          padding-top: 17px;
+          padding-bottom: 17px;
+        }
+        .tgt-season-leaderboard tbody > tr:not(:has(td[colspan])) > td:first-child { border-left: 1px solid rgba(33,72,55,.08); border-radius: 14px 0 0 14px; }
+        .tgt-season-leaderboard tbody > tr:not(:has(td[colspan])) > td:last-child { border-right: 1px solid rgba(33,72,55,.08); border-radius: 0 14px 14px 0; }
+        .tgt-season-leaderboard tbody > tr:not(:has(td[colspan])):hover > td { background: #f5efe0; }
+        .tgt-season-leaderboard .player-name { color: #103d2d; font-size: 16px; }
+        .tgt-season-leaderboard .final-score { color: #a57525; font-size: 19px; }
+        .tgt-team-leaderboard table {
+          border-collapse: separate;
+          border-spacing: 0 8px;
+          padding: 8px 12px 16px;
+        }
+        .tgt-team-leaderboard thead th {
+          border: 0;
+          color: #7b846f;
+          font-size: 11px;
+          letter-spacing: .12em;
+          text-transform: uppercase;
+        }
+        .tgt-team-leaderboard tbody > tr:not(:has(td[colspan])) > td {
+          padding-top: 17px;
+          padding-bottom: 17px;
+          background: #fffdf7;
+          border-top: 1px solid rgba(33,72,55,.08);
+          border-bottom: 1px solid rgba(33,72,55,.08);
+        }
+        .tgt-team-leaderboard tbody > tr:not(:has(td[colspan])) > td:first-child {
+          border-left: 1px solid rgba(33,72,55,.08);
+          border-radius: 14px 0 0 14px;
+        }
+        .tgt-team-leaderboard tbody > tr:not(:has(td[colspan])) > td:last-child {
+          border-right: 1px solid rgba(33,72,55,.08);
+          border-radius: 0 14px 14px 0;
+        }
+        .tgt-team-profile {
+          margin: 8px 12px 18px;
+          padding: 20px;
+          border: 1px solid rgba(240,207,130,.44);
+          border-radius: 20px;
+          color: #f0cf82;
+          background:
+            radial-gradient(circle at 100% 0%, rgba(240,207,130,.14), transparent 34%),
+            linear-gradient(145deg, #04251b, #0a4935);
+          box-shadow: 0 16px 38px rgba(3,31,23,.18);
+        }
+        .tgt-team-profile-header {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 18px;
+        }
+        .tgt-team-avatar {
+          width: 64px;
+          height: 64px;
+          min-width: 64px;
+          display: grid;
+          place-items: center;
+          border-radius: 50%;
+          color: #123629;
+          background: linear-gradient(135deg, #f1d686, #b9822e);
+          border: 2px solid #f4d98d;
+          font-family: Georgia, serif;
+          font-size: 18px;
+          font-weight: 900;
+          box-shadow: 0 8px 24px rgba(199,154,66,.24);
+        }
+        .tgt-team-rounds {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+          gap: 10px;
+        }
+        .tgt-team-round {
+          min-height: 82px;
+          padding: 13px 14px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          border-radius: 14px;
+          background: rgba(2,27,20,.54);
+          border: 1px solid rgba(240,207,130,.24);
+        }
+        .tgt-team-round span { color: #cdb46d; font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+        .tgt-team-round strong { color: #f5dc93; font-size: 22px; }
+        .tgt-team-final-kpi {
+          margin-top: 14px;
+          padding: 15px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, rgba(199,154,66,.18), rgba(7,55,39,.72));
+          border: 1px solid rgba(240,207,130,.42);
+        }
+        .tgt-team-final-kpi span { color: #d8bd76; font-weight: 800; }
+        .tgt-team-final-kpi strong { color: #f7df99; font-size: 24px; }
+        .tgt-profile-directory {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 16px;
+        }
+        .tgt-profile-directory-card {
+          position: relative;
+          overflow: hidden;
+          padding: 18px !important;
+          border-radius: 20px !important;
+          background:
+            radial-gradient(circle at 100% 0%, rgba(240,207,130,.15), transparent 36%),
+            linear-gradient(145deg, #05271d, #0a4935) !important;
+          border: 1px solid rgba(240,207,130,.38) !important;
+          box-shadow: 0 14px 38px rgba(3,31,23,.16);
+          transition: transform .18s ease, box-shadow .18s ease;
+        }
+        .tgt-profile-directory-card:hover { transform: translateY(-2px); box-shadow: 0 20px 48px rgba(3,31,23,.22); }
+        .tgt-directory-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+        .tgt-directory-stat {
+          min-height: 64px;
+          padding: 10px 8px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 5px;
+          border-radius: 12px;
+          background: rgba(2,27,20,.52);
+          border: 1px solid rgba(240,207,130,.22);
+        }
+        .tgt-directory-stat strong { color: #f5dc93; font-size: 18px; }
+        .tgt-directory-stat small { color: #cdb46d; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+        @media (max-width: 680px) {
+          .tgt-premium-hero { min-height: 360px; }
+          .tgt-public-card { border-radius: 18px !important; }
+          .tgt-profile-directory { grid-template-columns: 1fr; }
+          .tgt-season-leaderboard table,
+          .tgt-team-leaderboard table { padding: 5px 6px 12px; border-spacing: 0 6px; }
+          .tgt-team-profile { margin: 6px 6px 14px; padding: 16px; border-radius: 16px; }
+          .tgt-team-rounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .tgt-team-final-kpi { align-items: flex-start; flex-direction: column; }
+        }
         .tgt-wordmark-mark { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #d7b469; border-radius: 50%; color: #f0cf82; font-family: Georgia, serif; font-size: 17px; font-weight: 900; letter-spacing: .04em; text-shadow: 0 1px 14px rgba(215,180,105,.35); }
         .tgt-menu-button { min-width: 46px; min-height: 46px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: transparent; color: #fff; cursor: pointer; font-size: 24px; }
         .tgt-premium-hero { position: relative; overflow: hidden; padding: clamp(54px, 9vw, 110px) clamp(20px, 7vw, 92px); color: #fff; background: radial-gradient(circle at 78% 20%, rgba(215,180,105,.24), transparent 28%), linear-gradient(135deg, #062f22 0%, #0b5239 58%, #123a2d 100%); }
         .tgt-premium-hero:after { content: ""; position: absolute; right: -80px; bottom: -170px; width: 480px; height: 480px; border: 1px solid rgba(255,255,255,.1); border-radius: 50%; box-shadow: 0 0 0 55px rgba(255,255,255,.035), 0 0 0 110px rgba(255,255,255,.025); }
         .tgt-hero-inner { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; }
         .tgt-kicker { display: inline-flex; align-items: center; gap: 9px; padding: 7px 11px; border: 1px solid rgba(215,180,105,.45); border-radius: 999px; color: #f0d99e; font-size: 12px; font-weight: 800; letter-spacing: .14em; }
-        .tgt-premium-hero h1 { max-width: 780px; margin: 22px 0 12px; font-family: Georgia, serif; font-size: clamp(44px, 8vw, 92px); line-height: .95; letter-spacing: -.045em; }
-        .tgt-premium-hero h1 span { display: block; color: #d7b469; font-size: .43em; letter-spacing: .08em; margin-top: 16px; text-transform: uppercase; }
+        .tgt-premium-hero h1 { max-width: 780px; margin: 22px 0 12px; font-family: Georgia, serif; font-size: clamp(44px, 8vw, 92px); line-height: .95; letter-spacing: -.045em; color: #e7c873; background: linear-gradient(112deg, #a97724 0%, #d7b159 24%, #fff0ad 48%, #d5a94d 72%, #f1d484 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 8px 24px rgba(0,0,0,.22)); }
+        .tgt-premium-hero h1 span { display: block; color: #d7b469; -webkit-text-fill-color: #d7b469; background: none; font-size: .43em; letter-spacing: .08em; margin-top: 16px; text-transform: uppercase; }
         .tgt-hero-meta { display: flex; flex-wrap: wrap; gap: 10px 24px; margin-top: 26px; color: rgba(255,255,255,.78); font-weight: 650; }
         .tgt-hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
         .tgt-primary-action, .tgt-secondary-action { min-height: 48px; padding: 0 20px; border-radius: 999px; font-weight: 800; cursor: pointer; }
@@ -376,6 +819,15 @@ function Leaderboard({ onOpenLogin }) {
           .tgt-public-shell .tgt-tabs button { flex: 0 0 auto; min-height: 44px; white-space: nowrap; }
           .tgt-public-shell table { min-width: 680px; }
           .tgt-public-shell .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+          .tgt-public-shell .leaderboard-card { width: calc(100% - 16px); border-radius: 14px; }
+          .tgt-premium-hero { padding: 42px 16px 58px; text-align: center; }
+          .tgt-hero-meta { width: 100%; flex-direction: column; align-items: center; gap: 7px; }
+          .tgt-hero-actions { width: 100%; flex-direction: column; align-items: stretch; }
+          .tgt-hero-actions button { width: 100%; min-height: 48px; }
+          .tgt-hof-grid { grid-template-columns: 1fr; gap: 14px; }
+          .tgt-hof-card { min-height: 0; padding: 20px 16px; border-radius: 18px; }
+          .tgt-hof-trophy { width: 78px; height: 78px; font-size: 40px; }
+          .tgt-hof-year { font-size: 50px; }
         }
       `}</style>
 
@@ -389,6 +841,24 @@ function Leaderboard({ onOpenLogin }) {
             </small>
           </span>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => openPublicView("individual", "hall")}
+            style={{
+              minHeight: 44,
+              padding: "0 16px",
+              border: "1px solid #d7b469",
+              borderRadius: 999,
+              background: "linear-gradient(135deg, #f7e4a0, #c99a42)",
+              color: "#173326",
+              fontWeight: 900,
+              letterSpacing: ".08em",
+              cursor: "pointer",
+            }}
+          >
+            HALL OF FAME
+          </button>
         <button
           type="button"
           className="tgt-menu-button"
@@ -399,6 +869,7 @@ function Leaderboard({ onOpenLogin }) {
         >
           ☰
         </button>
+        </div>
       </header>
 
       {menuOpen && (
@@ -420,12 +891,20 @@ function Leaderboard({ onOpenLogin }) {
               </button>
             </div>
             <nav className="tgt-drawer-nav">
-              <button type="button" onClick={() => openPublicView("individual", "season")}>Individuelt overblik</button>
+              <button type="button" onClick={() => openPublicView("individual", "season")}>Leaderboard</button>
+              <button type="button" onClick={() => openPublicView("individual", "rounds")}>Runder</button>
+              <button type="button" onClick={() => openPublicView("individual", "profiles")}>Spillere</button>
               <button type="button" onClick={() => openPublicView("individual", "live")}>Live leaderboard</button>
-              <button type="button" onClick={() => openPublicView("team", "team")}>Holdturneringen</button>
+              <button type="button" onClick={() => openPublicView("team", "team-season")}>Holdturneringen</button>
               <button type="button" onClick={() => openPublicView("individual", "final")}>Finalestillingen</button>
               <button type="button" onClick={() => openPublicView("individual", "closest")}>Tættest på pinden</button>
               <button type="button" onClick={() => openPublicView("individual", "hall")}>Hall of Fame</button>
+              <div style={{ padding: "14px 16px 6px", color: "#d7b469", fontWeight: 900, letterSpacing: ".08em" }}>VÆLG SÆSON</div>
+              {[2027, 2026].map((season) => (
+                <button key={season} type="button" onClick={() => switchSeason(season)} style={{ color: selectedSeason === season ? "#d7b469" : undefined, fontWeight: selectedSeason === season ? 900 : undefined }}>
+                  {selectedSeason === season ? "●" : "○"} {season}
+                </button>
+              ))}
               <button type="button" onClick={() => { setMenuOpen(false); onOpenLogin(); }}>Markør- og admin-login</button>
             </nav>
           </aside>
@@ -434,14 +913,14 @@ function Leaderboard({ onOpenLogin }) {
 
       <section className="tgt-premium-hero">
         <div className="tgt-hero-inner">
-          <span className="tgt-kicker">FINAL WEEKEND · TGT 2026</span>
+          <span className="tgt-kicker">SÆSON {selectedSeason} · THE GOLDEN TEE TOUR</span>
           <h1>
             The Golden Tee Tour
-            <span>Leaderboard</span>
+            <span>{selectedSeason} Leaderboard</span>
           </h1>
           <div className="tgt-hero-meta">
-            <span>11. til 12. september 2026</span>
-            <span>Lübker Golf Resort</span>
+            <span>Den officielle sæsonstilling</span>
+            <span>Sæsonens officielle leaderboard</span>
             <span>15 spillere · 7 hold</span>
           </div>
           <div className="tgt-hero-actions">
@@ -473,6 +952,15 @@ function Leaderboard({ onOpenLogin }) {
       <main className="main-content">
         <section className="leaderboard-card">
           <nav
+            aria-label="Hovednavigation"
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: 10, background: "#082f23" }}
+          >
+            <button type="button" onClick={() => { setMainTab("individual"); setTab("season"); }} className={tab !== "rounds" ? "login-submit-button" : "login-cancel-button"} style={{ marginTop: 0 }}>LEADERBOARD</button>
+            <button type="button" onClick={() => setTab("rounds")} className={tab === "rounds" ? "login-submit-button" : "login-cancel-button"} style={{ marginTop: 0 }}>RUNDER</button>
+          </nav>
+
+          {tab !== "rounds" && tab !== "hall" && (
+          <nav
             aria-label="Leaderboard kategori"
             style={{
               display: "grid",
@@ -496,13 +984,13 @@ function Leaderboard({ onOpenLogin }) {
               }
               style={{ marginTop: 0, fontSize: 17 }}
             >
-              Individuel
+              Individuel turnering
             </button>
             <button
               type="button"
               onClick={() => {
                 setMainTab("team");
-                setTab("team");
+                setTab("team-season");
               }}
               className={
                 mainTab === "team"
@@ -511,9 +999,10 @@ function Leaderboard({ onOpenLogin }) {
               }
               style={{ marginTop: 0, fontSize: 17 }}
             >
-              Hold
+              Holdturnering
             </button>
           </nav>
+          )}
 
           {!mainTab && (
             <div
@@ -543,11 +1032,11 @@ function Leaderboard({ onOpenLogin }) {
             {mainTab === "individual" ? (
               <>
                 {[
-                  ["season", "Overblik"],
-                  ["live", "Runde 6 live"],
+                  ["season", "Sæsonstilling"],
+                  ["profiles", "Spillere"],
+                  ["live", liveData?.round ? `Runde ${liveData.round.round_number}` : "Live runde"],
                   ["final", "Samlet finalestilling"],
                   ["closest", "Tættest på pinden"],
-                  ["hall", "Hall of Fame"],
                 ].map(([value, label]) => (
                   <button
                     type="button"
@@ -565,14 +1054,22 @@ function Leaderboard({ onOpenLogin }) {
                 ))}
               </>
             ) : (
-              <button
-                type="button"
-                onClick={() => setTab("team")}
-                className="login-submit-button"
-                style={{ width: "auto", marginTop: 0 }}
-              >
-                Overblik
-              </button>
+              <>
+                {[
+                  ["team-season", "Sæsonstilling"],
+                  ["teams", "Hold"],
+                ].map(([value, label]) => (
+                  <button
+                    type="button"
+                    key={value}
+                    onClick={() => setTab(value)}
+                    className={tab === value ? "login-submit-button" : "login-cancel-button"}
+                    style={{ width: "auto", marginTop: 0 }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </>
             )}
           </div>
           )}
@@ -597,34 +1094,204 @@ function Leaderboard({ onOpenLogin }) {
             </div>
           )}
 
+          {!loading && !errorMessage && tab === "profiles" && (
+            <div style={{ padding: 20 }}>
+              <input
+                type="search"
+                value={profileSearch}
+                onChange={(event) => setProfileSearch(event.target.value)}
+                placeholder="Søg efter spiller..."
+                style={{ width: "100%", padding: "15px 18px", borderRadius: 999, border: "1px solid rgba(169,117,37,.35)", marginBottom: 20, fontSize: 16, background: "#fffdf7", color: "#123b2c", boxShadow: "0 8px 24px rgba(24,56,43,.07)" }}
+              />
+              <div className="tgt-profile-directory">
+                {standings
+                  .filter((player) => player.player_name.toLowerCase().includes(profileSearch.trim().toLowerCase()))
+                  .sort((a, b) => a.player_name.localeCompare(b.player_name, "da"))
+                  .map((player) => {
+                    const isOpen = directoryPlayerId === player.player_id;
+                    const rounds = seasonRoundHistory[player.player_id] ?? [];
+                    const position = standings.findIndex((entry) => entry.player_id === player.player_id) + 1;
+                    return (
+                      <article key={player.player_id} className="tgt-profile-directory-card" style={{ color: "#f0cf82" }}>
+                        <button type="button" onClick={() => setDirectoryPlayerId(isOpen ? null : player.player_id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: 0, border: 0, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer" }}>
+                          <span style={{ width: 58, height: 58, minWidth: 58, display: "grid", placeItems: "center", borderRadius: "50%", background: "linear-gradient(135deg, #f1d686, #b9822e)", color: "#123629", fontWeight: 900, fontSize: 20 }}>{getInitials(player.player_name)}</span>
+                          <span><strong style={{ display: "block", fontSize: 17 }}>{player.player_name}</strong><small>{selectedSeason} · Placering {position}</small></span>
+                        </button>
+                        {isOpen && (
+                          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(240,207,130,.25)" }}>
+                            <div className="tgt-directory-stats">
+                              {[
+                                ["HCP", playerDirectory[player.player_id]?.handicap_index ?? "–"],
+                                ["Placering", position],
+                                ["Score", formatScore(player.counting_score)],
+                                ["Bedste", rounds.length ? formatScore(Math.min(...rounds.map((round) => round.scoreToPar))) : "–"],
+                                ["Runder", player.rounds_played ?? rounds.length],
+                                ["Damebajere", damebajerCounts[player.player_id] ?? 0],
+                              ].map(([label, value]) => (
+                                <div key={label} className="tgt-directory-stat">
+                                  <strong>{value}</strong>
+                                  <small>{label}</small>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {!loading && !errorMessage && tab === "rounds" && (
+            <div style={{ padding: 20, display: "grid", gap: 14 }}>
+              {publicRounds.length === 0 ? (
+                <div className="status-box" style={{ margin: 0 }}>Ingen publicerede runder endnu.</div>
+              ) : publicRounds.map((round) => {
+                const statusLabel = round.status === "live" ? "Følg live" : round.status === "ready" ? "Se startliste" : "Se resultat";
+                return (
+                  <article key={round.id} style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: 18, border: "1px solid #e1d8c8", borderRadius: 16, background: "#fffdf8" }}>
+                    <div>
+                      <p className="eyebrow">Runde {round.round_number}</p>
+                      <h3 style={{ margin: "4px 0" }}>{round.name}</h3>
+                      <span style={{ color: "#718078" }}>{round.played_at ? formatDate(round.played_at) : "Dato følger"} · {round.courses?.club_name ?? "Bane følger"}</span>
+                    </div>
+                    <button type="button" onClick={() => openRound(round)} className="login-submit-button" style={{ width: "auto", marginTop: 0 }}>{statusLabel}</button>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
           {!loading && !errorMessage && tab === "season" && (
-            <div className="table-wrapper">
+            <div className="table-wrapper tgt-season-leaderboard">
               <table>
                 <thead>
                   <tr>
-                    <th className="position-column">Placering</th>
+                    <th className="position-column">#</th>
                     <th>Spiller</th>
-                    <th className="number-column">Spillet</th>
-                    <th className="number-column">Tæller</th>
-                    <th className="number-column">Bedste 4</th>
-                    <th className="number-column">Halveret</th>
+                    <th className="number-column">Score</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {standings.map((player, index) => (
-                    <tr key={player.player_id}>
-                      <td className="position-column">
-                        <span className={`position-badge position-${index + 1}`}>
-                          {index + 1}
-                        </span>
-                      </td>
-                      <td><span className="player-name">{player.player_name}</span></td>
-                      <td className="number-column">{player.rounds_played}</td>
-                      <td className="number-column">{player.counting_rounds} / 4</td>
-                      <td className="number-column score">{formatScore(player.counting_score)}</td>
-                      <td className="number-column final-score">{formatScore(player.halved_score)}</td>
-                    </tr>
-                  ))}
+                  {standings.map((player, index) => {
+                    const isOpen =
+                      selectedPlayerMode === "season" &&
+                      selectedPlayer?.player_id === player.player_id;
+                    const playerRounds = [
+                      ...(seasonRoundHistory[player.player_id] ?? []),
+                    ].sort((a, b) => a.roundNumber - b.roundNumber);
+                    const countingRoundNumbers = new Set(
+                      [...playerRounds]
+                        .sort((a, b) =>
+                          a.scoreToPar !== b.scoreToPar
+                            ? a.scoreToPar - b.scoreToPar
+                            : a.roundNumber - b.roundNumber
+                        )
+                        .slice(0, Math.min(4, playerRounds.length))
+                        .map((round) => round.roundNumber)
+                    );
+
+                    return (
+                      <Fragment key={player.player_id}>
+                        <tr
+                          onClick={() => {
+                            setSelectedPlayer(isOpen ? null : player);
+                            setSelectedPlayerMode(isOpen ? null : "season");
+                          }}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <td className="position-column">
+                            <span className={`position-badge position-${index + 1}`}>
+                              {index + 1}
+                            </span>
+                          </td>
+                          <td><span className="player-name">{player.player_name}</span></td>
+                          <td className="number-column final-score">
+                            {formatScore(player.counting_score)}
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr>
+                            <td colSpan="3" style={{ padding: 0 }}>
+                              <div style={{ padding: 20, background: "linear-gradient(145deg, #041f17, #083e2d)", borderTop: "1px solid rgba(240,207,130,.55)", borderBottom: "1px solid rgba(240,207,130,.55)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.025)" }}>
+                                <div style={{ marginBottom: 18 }}>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setProfilePlayerId(profilePlayerId === player.player_id ? null : player.player_id);
+                                  }}
+                                  style={{ width: "100%", minHeight: 46, marginTop: 14, border: "1px solid #c99a42", borderRadius: 12, background: "linear-gradient(145deg, #073727, #0b513a)", color: "#f0cf82", boxShadow: "inset 0 0 0 1px rgba(240,207,130,.18)", fontWeight: 900, cursor: "pointer" }}
+                                >
+                                  SPILLERPROFIL
+                                </button>
+                                {profilePlayerId === player.player_id && (() => {
+                                  const livePlayer = (liveData?.leaderboard ?? []).find((entry) => entry.playerId === player.player_id);
+                                  const scoredHoles = (livePlayer?.scorecard ?? []).filter((hole) => hole.toPar !== null);
+                                  const stats = scoredHoles.reduce((acc, hole) => {
+                                    if (hole.toPar <= -2) acc.eagles += 1;
+                                    else if (hole.toPar === -1) acc.birdies += 1;
+                                    else if (hole.toPar === 0) acc.pars += 1;
+                                    else if (hole.toPar === 1) acc.bogeys += 1;
+                                    else acc.doublePlus += 1;
+                                    return acc;
+                                  }, { eagles: 0, birdies: 0, pars: 0, bogeys: 0, doublePlus: 0 });
+                                  return (
+                                    <div style={{ marginTop: 14, padding: 20, borderRadius: 18, background: "linear-gradient(145deg, #052a1f, #0a4633)", color: "#f0cf82", border: "1px solid rgba(240,207,130,.5)", boxShadow: "0 12px 30px rgba(1,18,13,.22)" }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
+                                        <div style={{ width: 78, height: 78, minWidth: 78, display: "grid", placeItems: "center", borderRadius: "50%", border: "2px solid #e1bd66", background: "radial-gradient(circle at 30% 25%, #f5dc94, #b8802d)", color: "#133528", fontFamily: "Georgia, serif", fontSize: 27, fontWeight: 900, boxShadow: "0 8px 28px rgba(215,180,105,.3)" }}>{getInitials(player.player_name)}</div>
+                                        <div><p className="eyebrow" style={{ color: "#d8bc74", marginBottom: 5 }}>The Golden Tee Tour</p><h3 style={{ margin: 0, color: "#f0d582", fontSize: 25 }}>{player.player_name}</h3><span style={{ color: "rgba(255,255,255,.7)" }}>TGT spillerprofil · 2026</span></div>
+                                      </div>
+                                      <div className="flight-information tgt-profile-kpis">
+                                        <div><span style={{ color: "#e8cb7b" }}>Handicap</span><strong style={{ color: "#f0cf82" }}>{playerDirectory[player.player_id]?.handicap_index ?? livePlayer?.handicap ?? "–"}</strong></div>
+                                        <div><span style={{ color: "#e8cb7b" }}>Placering</span><strong style={{ color: "#f0cf82" }}>{index + 1}</strong></div>
+                                        <div><span style={{ color: "#e8cb7b" }}>Sæsonscore</span><strong style={{ color: "#f0cf82" }}>{formatScore(player.counting_score)}</strong></div>
+                                        <div><span style={{ color: "#e8cb7b" }}>Spillede runder</span><strong style={{ color: "#f0cf82" }}>{player.rounds_played ?? playerRounds.length}</strong></div>
+                                        <div><span style={{ color: "#e8cb7b" }}>Bedste runde</span><strong style={{ color: "#f0cf82" }}>{playerRounds.length ? formatScore(Math.min(...playerRounds.map((round) => round.scoreToPar))) : "–"}</strong></div>
+                                        <div><span style={{ color: "#e8cb7b" }}>🍺 Damebajere</span><strong style={{ color: "#f0cf82" }}>{damebajerCounts[player.player_id] ?? 0}</strong></div>
+                                      </div>
+                                      <h4 style={{ margin: "20px 0 10px", color: "#f0d582" }}>Scorestatistik fra gemte scorekort</h4>
+                                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(105px, 1fr))", gap: 9 }}>
+                                        {[["Eagles+", stats.eagles, "3px double #47b979", "50%"], ["Birdies", stats.birdies, "2px solid #54c981", "50%"], ["Pars", stats.pars, "1px solid #819289", "12px"], ["Bogeys", stats.bogeys, "2px solid #d39b48", "3px"], ["Double+", stats.doublePlus, "3px double #d2675f", "3px"]].map(([label, value, border, radius]) => (
+                                          <div key={label} style={{ padding: 12, textAlign: "center", border, borderRadius: radius, background: "linear-gradient(145deg, #073727, #0a4935)", boxShadow: "inset 0 0 0 1px rgba(240,207,130,.08)" }}><strong style={{ display: "block", fontSize: 22, color: "#f0cf82" }}>{value}</strong><small style={{ color: "#e8cb7b", fontWeight: 800 }}>{label}</small></div>
+                                        ))}
+                                      </div>
+                                      {scoredHoles.length === 0 && <p style={{ marginBottom: 0, color: "rgba(255,255,255,.68)" }}>Hulstatistik udfyldes automatisk fra kommende gemte scorekort.</p>}
+                                    </div>
+                                  );
+                                })()}
+                                </div>
+                                <strong style={{ display: "block", color: "#f0cf82", fontSize: 16, marginBottom: 10 }}>Tidligere runder</strong>
+                                {playerRounds.length === 0 ? (
+                                  <p style={{ marginBottom: 0, color: "#d4b45f" }}>
+                                    Der er ingen registrerede runder for spilleren.
+                                  </p>
+                                ) : (
+                                  <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                                    {playerRounds.map((round) => (
+                                      <div key={round.roundId} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: 12, borderRadius: 10, background: "#073727", border: "1px solid rgba(240,207,130,.38)", color: "#f0cf82" }}>
+                                        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                          Runde {round.roundNumber}
+                                          {countingRoundNumbers.has(round.roundNumber) && (
+                                            <small style={{ padding: "4px 8px", borderRadius: 999, background: "rgba(240,207,130,.14)", border: "1px solid rgba(240,207,130,.5)", color: "#f0cf82", fontWeight: 900, letterSpacing: ".06em" }}>
+                                              TÆLLENDE
+                                            </small>
+                                          )}
+                                        </span>
+                                        <strong style={{ color: "#f5dc93", fontSize: 17 }}>{round.holesPlayed === 18 ? formatScore(round.scoreToPar) : `${round.holesPlayed} huller`}</strong>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -644,86 +1311,166 @@ function Leaderboard({ onOpenLogin }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {liveLeaderboard.map((player, index) => (
-                    <tr key={player.playerId}>
-                      <td className="position-column">
-                        <span className={`position-badge position-${index + 1}`}>
-                          {index + 1}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="player-name">{player.playerName}</span>
-                        <small style={{ display: "block", color: "#78827d" }}>
-                          Handicap: {player.handicap ?? "Ikke angivet"}
-                        </small>
-                      </td>
-                      <td className="number-column">{player.holesPlayed}</td>
-                      <td className="number-column score">
-                        {player.holesPlayed === 0
-                          ? "Ikke startet"
-                          : formatScore(player.scoreToPar)}
-                      </td>
-                      <td className="number-column">
-                        {player.earnedBonus > 0
-                          ? player.hasCompletedRound
-                            ? `-${player.appliedBonus}`
-                            : `${player.earnedBonus} afventer`
-                          : "–"}
-                      </td>
-                      <td className="number-column final-score">
-                        {player.holesPlayed === 0
-                          ? "Ikke startet"
-                          : formatScore(player.officialToPar)}
-                      </td>
-                    </tr>
-                  ))}
+                  {liveLeaderboard.map((player, index) => {
+                    const isOpen =
+                      selectedPlayerMode === "live" &&
+                      selectedPlayer?.playerId === player.playerId;
+
+                    return (
+                      <Fragment key={player.playerId}>
+                        <tr
+                          onClick={() => {
+                            setSelectedPlayer(isOpen ? null : player);
+                            setSelectedPlayerMode(isOpen ? null : "live");
+                          }}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <td className="position-column">
+                            <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
+                          </td>
+                          <td>
+                            <span className="player-name">{player.playerName}</span>
+                            <small style={{ display: "block", color: "#78827d" }}>Handicap: {player.handicap ?? "Ikke angivet"}</small>
+                          </td>
+                          <td className="number-column">{player.holesPlayed}</td>
+                          <td className="number-column score">{player.holesPlayed === 0 ? "Ikke startet" : formatScore(player.scoreToPar)}</td>
+                          <td className="number-column">{player.earnedBonus > 0 ? player.hasCompletedRound ? `-${player.appliedBonus}` : `${player.earnedBonus} afventer` : "–"}</td>
+                          <td className="number-column final-score">{player.holesPlayed === 0 ? "Ikke startet" : formatScore(player.officialToPar)}</td>
+                        </tr>
+                        {isOpen && (
+                          <tr>
+                            <td colSpan="6" style={{ padding: 0 }}>
+                              <div style={{ padding: 16, background: "#f7f3e9", overflowX: "auto" }}>
+                                <strong>{player.playerName} · scorekort efter {player.holesPlayed} huller</strong>
+                                <table style={{ minWidth: 760, marginTop: 12 }}>
+                                  <thead><tr><th>Hul</th>{player.scorecard?.map((hole) => <th key={hole.holeNumber}>{hole.holeNumber}</th>)}</tr></thead>
+                                  <tbody>
+                                    <tr><th>Par</th>{player.scorecard?.map((hole) => <td key={hole.holeNumber}>{hole.par}</td>)}</tr>
+                                    <tr><th>Slag</th>{player.scorecard?.map((hole) => <td key={hole.holeNumber} style={{ textAlign: "center" }}>{hole.strokes === null ? "–" : <span style={getScoreMarkStyle(hole.toPar)}>{hole.strokes}</span>}</td>)}</tr>
+                                    <tr><th>Resultat</th>{player.scorecard?.map((hole) => <td key={hole.holeNumber}>{hole.toPar === null ? "–" : formatScore(hole.toPar)}</td>)}</tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
               {liveLeaderboard.length === 0 && (
-                <div className="status-box">Der er ingen deltagere i Runde 6.</div>
+                <div className="status-box">Der er ingen deltagere i den valgte runde.</div>
               )}
             </div>
           )}
 
-          {!loading && !errorMessage && tab === "team" && (
-            <div className="table-wrapper">
+          {!loading && !errorMessage && tab === "team-season" && (
+            <div className="table-wrapper tgt-team-leaderboard">
               <table>
                 <thead>
                   <tr>
-                    <th className="position-column">Placering</th>
+                    <th className="position-column">#</th>
                     <th>Hold</th>
-                    <th className="number-column">Thru</th>
-                    <th className="number-column">Best Ball netto</th>
+                    <th className="number-column">Runder</th>
+                    <th className="number-column">Score</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {teamLeaderboard.map((team, index) => (
+                  {historicalTeamStandings.map((team, index) => (
                     <tr key={team.teamId}>
-                      <td className="position-column">
-                        <span className={`position-badge position-${index + 1}`}>
-                          {index + 1}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="player-name">{team.teamName}</span>
-                        <small style={{ display: "block", color: "#78827d" }}>
-                          {team.players.map((player) =>
-                            `${player.playerName} · PHCP ${player.playingHandicap}`
-                          ).join(" | ")}
-                        </small>
-                      </td>
-                      <td className="number-column">{team.holesPlayed}</td>
-                      <td className="number-column final-score">
-                        {team.holesPlayed === 0 ? "Ikke startet" : formatScore(team.netToPar)}
-                      </td>
+                      <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span></td>
+                      <td><span className="player-name">{team.teamName}</span></td>
+                      <td className="number-column">{team.roundsPlayed}</td>
+                      <td className="number-column final-score">{formatScore(team.halvedScore)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {teamLeaderboard.length === 0 && (
-                <div className="status-box">
-                  Ingen gyldige hold kunne beregnes. Kontrollér, at hvert hold har præcis to spillere og spillehandicap på Runde 6.
-                </div>
+              {historicalTeamStandings.length === 0 && <div className="status-box">Der er ingen historiske holdresultater.</div>}
+            </div>
+          )}
+          {!loading && !errorMessage && tab === "teams" && (
+            <div className="table-wrapper tgt-team-leaderboard">
+              <table>
+                <thead>
+                  <tr>
+                    <th className="position-column">#</th>
+                    <th>Hold</th>
+                    <th className="number-column">Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historicalTeamStandings.map((team, index) => {
+                    const isOpen = selectedTeamId === team.teamId;
+                    return (
+                      <Fragment key={team.teamId}>
+                        <tr
+                          onClick={() =>
+                            setSelectedTeamId(isOpen ? null : team.teamId)
+                          }
+                          style={{ cursor: "pointer" }}
+                        >
+                          <td className="position-column">
+                            <span className={`position-badge position-${index + 1}`}>
+                              {index + 1}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="player-name">{team.teamName}</span>
+                          </td>
+                          <td className="number-column final-score">
+                            {formatScore(team.halvedScore)}
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr>
+                            <td colSpan="3" style={{ padding: 0 }}>
+                              <div className="tgt-team-profile">
+                                <div className="tgt-team-profile-header">
+                                  <div className="tgt-team-avatar">
+                                    {team.teamName
+                                      .split("&")
+                                      .map((name) => name.trim()[0]?.toUpperCase())
+                                      .join("")}
+                                  </div>
+                                  <div>
+                                    <p className="eyebrow" style={{ color: "#cdb46d", marginBottom: 5 }}>
+                                      TGT holdprofil · {selectedSeason}
+                                    </p>
+                                    <h3 style={{ margin: 0, color: "#f5dc93", fontSize: 22 }}>
+                                      {team.teamName}
+                                    </h3>
+                                    <span style={{ color: "rgba(245,220,147,.72)" }}>
+                                      Placering {index + 1} · {team.roundsPlayed} spillede runder
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="tgt-team-rounds">
+                                  {team.rounds
+                                    .sort((a, b) => a.roundNumber - b.roundNumber)
+                                    .map((round) => (
+                                      <div key={round.roundNumber} className="tgt-team-round">
+                                        <span>Runde {round.roundNumber}</span>
+                                        <strong>{formatScore(round.score)}</strong>
+                                      </div>
+                                    ))}
+                                </div>
+                                <div className="tgt-team-final-kpi">
+                                  <span>Bedste 4, halveret før holdfinalen</span>
+                                  <strong>{formatScore(team.halvedScore)}</strong>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {historicalTeamStandings.length === 0 && (
+                <div className="status-box">Der er ingen historiske holdresultater.</div>
               )}
             </div>
           )}
@@ -914,83 +1661,19 @@ function Leaderboard({ onOpenLogin }) {
           {!loading && !errorMessage && tab === "hall" && (
             <div style={{ padding: 20 }}>
               {hallOfFame.length === 0 ? (
-                <div className="status-box" style={{ margin: 0 }}>
-                  Ingen afsluttede TGT-sæsoner endnu.
-                </div>
+                <div className="status-box" style={{ margin: 0 }}>Ingen afsluttede TGT-sæsoner endnu.</div>
               ) : (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(auto-fit, minmax(280px, 1fr))",
-                    gap: 16,
-                  }}
-                >
+                <div className="tgt-hof-grid">
                   {hallOfFame.map((entry) => (
-                    <article
-                      key={entry.id}
-                      style={{
-                        overflow: "hidden",
-                        border: "1px solid #d8e4db",
-                        borderRadius: 18,
-                        background: "#ffffff",
-                      }}
-                    >
-                      <header
-                        style={{
-                          padding: 18,
-                          color: "#ffffff",
-                          background:
-                            "linear-gradient(135deg, #0b4935, #18704e)",
-                        }}
-                      >
-                        <p
-                          className="eyebrow"
-                          style={{ color: "#dafaaf" }}
-                        >
-                          TGT sæson
-                        </p>
-                        <h2 style={{ margin: "4px 0 0" }}>
-                          {entry.season}
-                        </h2>
+                    <article key={entry.id} className="tgt-hof-card">
+                      <header className="tgt-hof-top">
+                        <div className="tgt-hof-trophy" aria-hidden="true">🏆</div>
+                        <p className="tgt-hof-kicker">The Golden Tee Tour · Hall of Fame</p>
+                        <h2 className="tgt-hof-year">{entry.season}</h2>
                       </header>
-
-                      <div style={{ padding: 18 }}>
-                        <section>
-                          <p className="eyebrow">Individuel mester</p>
-                          <h3 style={{ margin: "5px 0" }}>
-                            {entry.individualChampionName}
-                          </h3>
-                        </section>
-
-                        {entry.teamChampionName && (
-                          <section
-                            style={{
-                              marginTop: 20,
-                              paddingTop: 18,
-                              borderTop: "1px solid #e5ebe6",
-                            }}
-                          >
-                            <p className="eyebrow">Holdmester</p>
-                            <h3 style={{ margin: "5px 0" }}>
-                              {entry.teamChampionName}
-                            </h3>
-                          </section>
-                        )}
-
-                        <section
-                          style={{
-                            marginTop: 20,
-                            paddingTop: 18,
-                            borderTop: "1px solid #e5ebe6",
-                          }}
-                        >
-                          <p className="eyebrow">Finalebane</p>
-                          <h3 style={{ margin: "5px 0" }}>
-                            {entry.finalCourse ?? "Ikke registreret"}
-                          </h3>
-                        </section>
-                      </div>
+                      <section className="tgt-hof-winner"><span>Individuel mester</span><strong>{entry.individualChampionName}</strong></section>
+                      {entry.teamChampionName && <section className="tgt-hof-winner"><span>Holdmestre</span><strong>{entry.teamChampionName}</strong></section>}
+                      <div className="tgt-hof-course"><span aria-hidden="true">◆</span><span>{entry.finalCourse ?? "Finalebane ikke registreret"}</span></div>
                     </article>
                   ))}
                 </div>
@@ -1000,7 +1683,7 @@ function Leaderboard({ onOpenLogin }) {
 
           <div className="card-footer">
             <span>Data hentes direkte fra TGT-databasen</span>
-            <span>Sæson 2026</span>
+            <span>Sæson {selectedSeason}</span>
           </div>
         </section>
       </main>
@@ -2737,6 +3420,7 @@ function FlightAdmin({ season = 2027 }) {
   const [savingStartList, setSavingStartList] = useState(false);
   const [assigningMarkers, setAssigningMarkers] = useState(false);
   const [publishingRound, setPublishingRound] = useState(false);
+  const [startingLiveScoring, setStartingLiveScoring] = useState(false);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -3008,6 +3692,38 @@ function FlightAdmin({ season = 2027 }) {
     }
   }
 
+  async function handleStartLiveScoring() {
+    if (!selectedRoundId || selectedRound?.status !== "ready") return;
+
+    const confirmed = window.confirm(
+      `Vil du starte livescoring for Runde ${selectedRound.round_number}? Runden bliver synlig som LIVE på forsiden.`
+    );
+    if (!confirmed) return;
+
+    setStartingLiveScoring(true);
+    setMessage("");
+    setErrorMessage("");
+
+    try {
+      const updatedRound = await updateRoundStatus({
+        roundId: selectedRoundId,
+        status: "live",
+      });
+
+      setMessage(
+        `Livescoring er startet for Runde ${updatedRound.round_number}. Runden vises nu som LIVE på forsiden.`
+      );
+      await loadFlightData(selectedRoundId);
+    } catch (error) {
+      console.error("Fejl ved start af livescoring:", error);
+      setErrorMessage(
+        error.message ?? "Livescoring kunne ikke startes."
+      );
+    } finally {
+      setStartingLiveScoring(false);
+    }
+  }
+
   return (
     <section
       style={{
@@ -3269,6 +3985,29 @@ function FlightAdmin({ season = 2027 }) {
               : selectedRound.status === "ready"
                 ? "Runden er publiceret"
                 : "Validér og publicér runde"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleStartLiveScoring}
+            disabled={
+              isLocked ||
+              startingLiveScoring ||
+              selectedRound.status !== "ready"
+            }
+            className="login-submit-button"
+            style={{
+              maxWidth: 360,
+              marginLeft: 10,
+              background:
+                selectedRound.status === "live" ? "#176334" : undefined,
+            }}
+          >
+            {startingLiveScoring
+              ? "Starter livescoring..."
+              : selectedRound.status === "live"
+                ? "Livescoring er i gang"
+                : "Start livescoring"}
           </button>
 
           <form
@@ -3853,6 +4592,31 @@ function AdminClosestToPin({ session, onLogout }) {
             )}
             {adminSeasonTab === "2026" && (
               <>
+                <section
+                  style={{
+                    padding: 20,
+                    border: "1px solid #d8e4db",
+                    borderRadius: 16,
+                    background: "linear-gradient(135deg, #eef7f0, #ffffff)",
+                    marginBottom: 24,
+                  }}
+                >
+                  <p className="eyebrow">Finaleafvikling 2026</p>
+                  <h2 style={{ marginTop: 0 }}>Klargør og start finalerunderne</h2>
+                  <p className="description">
+                    Runde 6 og Runde 7 bruger nu samme sikre flow som 2027:
+                    deltagere, bolde, markørlogin, publicering og livescoring.
+                  </p>
+                  <div className="flight-information" style={{ marginTop: 18 }}>
+                    <div><span>Runde 6</span><strong>Holdfinale og individuel runde</strong></div>
+                    <div><span>Runde 7</span><strong>Individuel finale</strong></div>
+                    <div><span>Flow</span><strong>Draft → Ready → Live</strong></div>
+                  </div>
+                </section>
+
+                <RoundParticipantsAdmin season={2026} />
+                <FlightAdmin season={2026} />
+
             <section
               style={{
                 padding: 20,
@@ -4393,6 +5157,8 @@ function MarkerDashboard({
   const [holes, setHoles] = useState([]);
   const [existingScores, setExistingScores] =
     useState([]);
+  const [damebajere, setDamebajere] = useState([]);
+  const [savingDamebajerId, setSavingDamebajerId] = useState(null);
 
   const [selectedHole, setSelectedHole] = useState(1);
   const [draftScores, setDraftScores] = useState({});
@@ -4447,6 +5213,39 @@ function MarkerDashboard({
     });
 
     setDraftScores(scoreMap);
+  }
+
+  async function loadDamebajere(roundId) {
+    const { data, error } = await supabase
+      .from("damebajere_public")
+      .select("id, round_id, flight_id, player_id, hole_number, created_at")
+      .eq("round_id", roundId);
+    if (error) throw error;
+    setDamebajere(data ?? []);
+  }
+
+  async function handleToggleDamebajer(player) {
+    if (!assignment?.round_id) return;
+    const isRegistered = damebajere.some((entry) =>
+      entry.player_id === player.id && Number(entry.hole_number) === Number(selectedHole)
+    );
+    if (!window.confirm(isRegistered ? `Fjern damebajeren for ${player.name} på hul ${selectedHole}?` : `Registrér damebajer til ${player.name} på hul ${selectedHole}?`)) return;
+    setSavingDamebajerId(player.id);
+    setSaveError("");
+    try {
+      const { data, error } = await supabase.rpc("toggle_damebajer", {
+        requested_round_id: assignment.round_id,
+        requested_player_id: player.id,
+        requested_hole_number: selectedHole,
+      });
+      if (error) throw error;
+      await loadDamebajere(assignment.round_id);
+      setSaveMessage(data?.registered ? `Damebajer registreret til ${player.name} på hul ${selectedHole}.` : `Damebajeren er fjernet for ${player.name} på hul ${selectedHole}.`);
+    } catch (error) {
+      setSaveError(error.message ?? "Damebajeren kunne ikke gemmes.");
+    } finally {
+      setSavingDamebajerId(null);
+    }
   }
 
   useEffect(() => {
@@ -4632,6 +5431,7 @@ function MarkerDashboard({
           flight.round_id,
           loadedPlayers
         );
+        await loadDamebajere(flight.round_id);
       } catch (scoreError) {
         console.error(
           "Fejl ved hentning af scores:",
@@ -5253,6 +6053,15 @@ function MarkerDashboard({
                             fontWeight: 800,
                           }}
                         />
+
+                        <button
+                          type="button"
+                          onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleToggleDamebajer(player); }}
+                          disabled={Boolean(assignment.rounds?.locked_at) || savingDamebajerId === player.id}
+                          style={{ gridColumn: "1 / -1", width: "100%", minHeight: 42, borderRadius: 10, border: "1px solid #c99a42", background: damebajere.some((entry) => entry.player_id === player.id && Number(entry.hole_number) === Number(selectedHole)) ? "linear-gradient(135deg, #f4dfa0, #c9963d)" : "#fffaf0", color: "#3f3012", fontWeight: 900, cursor: "pointer" }}
+                        >
+                          {savingDamebajerId === player.id ? "Gemmer..." : damebajere.some((entry) => entry.player_id === player.id && Number(entry.hole_number) === Number(selectedHole)) ? "🍺 Damebajer registreret ✓" : "🍺 Registrér damebajer"}
+                        </button>
                       </label>
                     );
                   })}

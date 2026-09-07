@@ -86,6 +86,20 @@ function getScoreMarkStyle(toPar) {
   return { ...base, color: "#24372f" };
 }
 
+function calculatePlayingHandicap(handicapIndex, slopeRating, courseRating, coursePar) {
+  const values = [handicapIndex, slopeRating, courseRating, coursePar].map(Number);
+  if (!values.every(Number.isFinite)) return null;
+  const [hcp, slope, rating, par] = values;
+  return Math.round(hcp * (slope / 113) + (rating - par));
+}
+
+function getAllocatedStrokes(playingHandicap, strokeIndex) {
+  const handicap = Number(playingHandicap);
+  const index = Number(strokeIndex);
+  if (!Number.isFinite(handicap) || !Number.isFinite(index) || handicap <= 0) return 0;
+  return Math.floor((handicap - 1) / 18) + (index <= ((handicap - 1) % 18) + 1 ? 1 : 0);
+}
+
 function formatDate(date) {
   if (!date) {
     return "Ikke angivet";
@@ -142,6 +156,187 @@ function sortStandings(data) {
   });
 }
 
+
+function SplitScorecard({ scorecard = [], handicapIndex = null, playingHandicap = null, position = null }) {
+  const normalized = Array.from({ length: 18 }, (_, index) => {
+    const holeNumber = index + 1;
+    return scorecard.find((hole) => Number(hole.holeNumber) === holeNumber) ?? {
+      holeNumber,
+      par: null,
+      strokeIndex: null,
+      strokesReceived: 0,
+      strokes: null,
+      netStrokes: null,
+      toPar: null,
+    };
+  });
+
+  const played = normalized.filter((hole) => hole.strokes !== null && hole.strokes !== undefined);
+  const totalPar = normalized.reduce((sum, hole) => sum + (Number(hole.par) || 0), 0);
+  const grossTotal = played.reduce((sum, hole) => sum + Number(hole.strokes), 0);
+  const netTotal = played.reduce((sum, hole) => sum + Number(hole.netStrokes ?? hole.strokes), 0);
+  const totalToPar = played.reduce((sum, hole) => sum + (Number(hole.toPar) || 0), 0);
+
+  const renderMobileNine = (holes, totalLabel) => {
+    const ninePlayed = holes.filter((hole) => hole.strokes !== null && hole.strokes !== undefined);
+    const ninePar = holes.reduce((sum, hole) => sum + (Number(hole.par) || 0), 0);
+    const nineGross = ninePlayed.reduce((sum, hole) => sum + Number(hole.strokes), 0);
+    const nineNet = ninePlayed.reduce((sum, hole) => sum + Number(hole.netStrokes ?? hole.strokes), 0);
+
+    return (
+      <div className="tgt-gb-nine">
+        <div className="tgt-gb-row tgt-gb-holes">
+          <strong>Hul</strong>
+          {holes.map((hole) => <span key={hole.holeNumber}>{hole.holeNumber}</span>)}
+          <strong>{totalLabel}</strong>
+        </div>
+        <div className="tgt-gb-row tgt-gb-muted">
+          <strong>Index</strong>
+          {holes.map((hole) => <span key={hole.holeNumber}>{hole.strokeIndex ?? "–"}</span>)}
+          <strong>–</strong>
+        </div>
+        <div className="tgt-gb-row tgt-gb-muted">
+          <strong>Par</strong>
+          {holes.map((hole) => <span key={hole.holeNumber}>{hole.par ?? "–"}</span>)}
+          <strong>{ninePar || "–"}</strong>
+        </div>
+        <div className="tgt-gb-row tgt-gb-score-row">
+          <strong>Score</strong>
+          {holes.map((hole) => (
+            <span key={hole.holeNumber}>
+              {hole.strokes === null || hole.strokes === undefined
+                ? "–"
+                : <span style={getScoreMarkStyle(hole.toPar)}>{hole.strokes}</span>}
+            </span>
+          ))}
+          <strong>{ninePlayed.length ? nineGross : "–"}</strong>
+        </div>
+        <div className="tgt-gb-row tgt-gb-net-row">
+          <strong>Net</strong>
+          {holes.map((hole) => (
+            <span key={hole.holeNumber} className="tgt-gb-net-cell">
+              {hole.netStrokes === null || hole.netStrokes === undefined ? "–" : hole.netStrokes}
+              {(Number(hole.strokesReceived) || 0) > 0 && <small>{"•".repeat(Number(hole.strokesReceived))}</small>}
+            </span>
+          ))}
+          <strong>{ninePlayed.length ? nineNet : "–"}</strong>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDesktopNine = (holes, label, totalLabel) => {
+    const ninePlayed = holes.filter((hole) => hole.strokes !== null && hole.strokes !== undefined);
+    const parTotal = holes.reduce((sum, hole) => sum + (Number(hole.par) || 0), 0);
+    const gross = ninePlayed.reduce((sum, hole) => sum + Number(hole.strokes), 0);
+    const received = ninePlayed.reduce((sum, hole) => sum + (Number(hole.strokesReceived) || 0), 0);
+    const net = ninePlayed.reduce((sum, hole) => sum + Number(hole.netStrokes ?? hole.strokes), 0);
+    const result = ninePlayed.reduce((sum, hole) => sum + (Number(hole.toPar) || 0), 0);
+    return (
+      <div className="tgt-scorecard-nine">
+        <div className="tgt-scorecard-nine-title"><strong>{label}</strong><span>{ninePlayed.length}/9 huller</span></div>
+        <div className="tgt-scorecard-table-wrap">
+          <table className="tgt-scorecard-grid">
+            <thead><tr><th>Hul</th>{holes.map((hole) => <th key={hole.holeNumber}>{hole.holeNumber}</th>)}<th>{totalLabel}</th></tr></thead>
+            <tbody>
+              <tr><th>Index</th>{holes.map((hole) => <td key={hole.holeNumber}>{hole.strokeIndex ?? "–"}</td>)}<td>–</td></tr>
+              <tr><th>Par</th>{holes.map((hole) => <td key={hole.holeNumber}>{hole.par ?? "–"}</td>)}<td>{parTotal || "–"}</td></tr>
+              <tr><th>Slag</th>{holes.map((hole) => <td key={hole.holeNumber}>{"●".repeat(Number(hole.strokesReceived) || 0) || "–"}</td>)}<td>{received || "–"}</td></tr>
+              <tr><th>Score</th>{holes.map((hole) => <td key={hole.holeNumber}>{hole.strokes ?? "–"}</td>)}<td>{ninePlayed.length ? gross : "–"}</td></tr>
+              <tr><th>Net</th>{holes.map((hole) => <td key={hole.holeNumber}>{hole.netStrokes ?? "–"}</td>)}<td>{ninePlayed.length ? net : "–"}</td></tr>
+              <tr><th>Til par</th>{holes.map((hole) => <td key={hole.holeNumber}>{hole.toPar === null || hole.toPar === undefined ? "–" : formatScore(hole.toPar)}</td>)}<td>{ninePlayed.length ? formatScore(result) : "–"}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="tgt-split-scorecard">
+      <div className="tgt-gb-mobile-card">
+        {renderMobileNine(normalized.slice(0, 9), "Ud")}
+        {renderMobileNine(normalized.slice(9, 18), "Ind")}
+        <div className="tgt-gb-footer">
+          <span>Par <strong>{totalPar || "–"}</strong></span>
+          <span>Score <strong>{played.length ? `${grossTotal}/${netTotal}` : "–"}</strong></span>
+          <span>Til par <strong>{played.length ? formatScore(totalToPar) : "–"}</strong></span>
+          <span>Position <strong>{position ? `${position}.` : "–"}</strong></span>
+        </div>
+      </div>
+      <div className="tgt-desktop-detailed-scorecard">
+        <div className="tgt-scorecard-player-handicap"><span>HCP {handicapIndex ?? "–"}</span><span>SPH {playingHandicap ?? "–"}</span></div>
+        {renderDesktopNine(normalized.slice(0, 9), "FOR 9", "UD")}
+        {renderDesktopNine(normalized.slice(9, 18), "BAG 9", "IND")}
+      </div>
+    </div>
+  );
+}
+
+function ClosestToPinHoleSelector({ roundId, courseId, disabled = false }) {
+  const [holes, setHoles] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      if (!roundId || !courseId) {
+        if (active) { setHoles([]); setSelected([]); }
+        return;
+      }
+      const [holesResult, selectedResult] = await Promise.all([
+        supabase.from("course_holes").select("hole_number, par").eq("course_id", courseId).order("hole_number"),
+        supabase.from("round_closest_to_pin_holes").select("hole_number").eq("round_id", roundId).order("hole_number"),
+      ]);
+      if (!active) return;
+      if (holesResult.error || selectedResult.error) {
+        setErrorMessage((holesResult.error ?? selectedResult.error).message);
+        return;
+      }
+      setHoles(holesResult.data ?? []);
+      setSelected((selectedResult.data ?? []).map((row) => Number(row.hole_number)));
+    }
+    load();
+    return () => { active = false; };
+  }, [roundId, courseId]);
+
+  function toggleHole(holeNumber) {
+    setSelected((current) => current.includes(holeNumber) ? current.filter((value) => value !== holeNumber) : [...current, holeNumber].sort((a, b) => a - b));
+    setMessage("");
+  }
+
+  async function save() {
+    setSaving(true); setMessage(""); setErrorMessage("");
+    const { data, error } = await supabase.rpc("set_round_closest_to_pin_holes", {
+      requested_round_id: roundId,
+      requested_hole_numbers: selected,
+    });
+    setSaving(false);
+    if (error) { setErrorMessage(error.message); return; }
+    setMessage(`${data ?? selected.length} hul${Number(data ?? selected.length) === 1 ? "" : "ler"} gemt til Tættest på pinden.`);
+  }
+
+  if (!courseId) return null;
+  return (
+    <section className="tgt-closest-hole-selector">
+      <div><strong>Tættest på pinden-huller</strong><small>Vælg kun de huller, der skal være med i konkurrencen.</small></div>
+      <div className="tgt-closest-hole-grid">
+        {holes.map((hole) => (
+          <label key={hole.hole_number} className={selected.includes(Number(hole.hole_number)) ? "selected" : ""}>
+            <input type="checkbox" checked={selected.includes(Number(hole.hole_number))} onChange={() => toggleHole(Number(hole.hole_number))} disabled={disabled} />
+            <span>Hul {hole.hole_number}</span><small>Par {hole.par}</small>
+          </label>
+        ))}
+      </div>
+      <button type="button" onClick={save} disabled={disabled || saving} className="login-submit-button">{saving ? "Gemmer..." : "Gem valgte huller"}</button>
+      {message && <div className="status-box">{message}</div>}
+      {errorMessage && <div className="error-box">{errorMessage}</div>}
+    </section>
+  );
+}
 function Leaderboard({ onOpenLogin }) {
   const [mainTab, setMainTab] = useState("individual");
   const [tab, setTab] = useState("season");
@@ -160,6 +355,7 @@ function Leaderboard({ onOpenLogin }) {
   const [publicRounds, setPublicRounds] = useState([]);
   const [selectedPublicRoundId, setSelectedPublicRoundId] = useState(null);
   const [seasonRoundHistory, setSeasonRoundHistory] = useState({});
+  const [expandedHistoricalRoundKey, setExpandedHistoricalRoundKey] = useState(null);
   const [teamRoundHistory, setTeamRoundHistory] = useState({});
   const [historicalTeamStandings, setHistoricalTeamStandings] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
@@ -200,6 +396,7 @@ function Leaderboard({ onOpenLogin }) {
           status,
           individual_enabled,
           team_enabled,
+          course_id,
           courses (club_name, course_name),
           tournaments!inner (season)
         `)
@@ -209,6 +406,56 @@ function Leaderboard({ onOpenLogin }) {
 
       if (publicRoundsError) throw publicRoundsError;
       setPublicRounds(roundRows ?? []);
+
+      const { data: historicalScoreRows, error: historicalScoresError } = await supabase
+        .from("scores")
+        .select("round_id, player_id, hole_number, strokes")
+        .in("round_id", (roundRows ?? []).map((round) => round.id))
+        .order("hole_number", { ascending: true });
+      if (historicalScoresError) throw historicalScoresError;
+
+      const historicalCourseIds = [
+        ...new Set(
+          (roundRows ?? [])
+            .map((round) => round.course_id)
+            .filter(Boolean)
+        ),
+      ];
+      let historicalHoleRows = [];
+      if (historicalCourseIds.length > 0) {
+        const { data: holeData, error: historicalHolesError } = await supabase
+          .from("course_holes")
+          .select("course_id, hole_number, par, stroke_index")
+          .in("course_id", historicalCourseIds)
+          .order("hole_number", { ascending: true });
+        if (historicalHolesError) throw historicalHolesError;
+        historicalHoleRows = holeData ?? [];
+      }
+
+      const holeByCourseAndNumber = new Map(
+        historicalHoleRows.map((hole) => [
+          `${hole.course_id}-${hole.hole_number}`,
+          hole,
+        ])
+      );
+      const historicalScorecards = {};
+      (historicalScoreRows ?? []).forEach((score) => {
+        const key = `${score.player_id}-${score.round_id}`;
+        historicalScorecards[key] ??= [];
+        const hole = holeByCourseAndNumber.get(
+          `${(roundRows ?? []).find((round) => round.id === score.round_id)?.course_id}-${score.hole_number}`
+        );
+        const par = hole?.par ?? null;
+        historicalScorecards[key].push({
+          holeNumber: score.hole_number,
+          par,
+          strokes: score.strokes,
+          toPar:
+            par === null || score.strokes === null
+              ? null
+              : Number(score.strokes) - Number(par),
+        });
+      });
 
       // Spillerhistorikken hentes senere via en dedikeret visning.
       // En historikfejl må aldrig blokere det offentlige leaderboard.
@@ -275,12 +522,20 @@ function Leaderboard({ onOpenLogin }) {
       const individualHistoryByPlayer = {};
       (individualHistoryResult.data ?? []).forEach((result) => {
         individualHistoryByPlayer[result.player_id] ??= [];
+        const matchingRound = (roundRows ?? []).find(
+          (round) => Number(round.round_number) === Number(result.round_number)
+        );
+        const scorecard = matchingRound
+          ? historicalScorecards[`${result.player_id}-${matchingRound.id}`] ?? []
+          : [];
         individualHistoryByPlayer[result.player_id].push({
+          roundId: matchingRound?.id ?? `historical-${result.round_number}`,
           roundNumber: result.round_number,
-          roundName: `Runde ${result.round_number}`,
+          roundName: matchingRound?.name ?? `Runde ${result.round_number}`,
           scoreToPar: result.score,
-          holesPlayed: 18,
-          hasScorecard: false,
+          holesPlayed: scorecard.length || 18,
+          hasScorecard: scorecard.length > 0,
+          scorecard,
         });
       });
       setSeasonRoundHistory(individualHistoryByPlayer);
@@ -524,19 +779,9 @@ function Leaderboard({ onOpenLogin }) {
       description:
         "Halveret grundspil plus officiel score fra Runde 6 og Runde 7. Godkendte bonusser indgår kun efter 18 huller i den relevante runde.",
     },
-    "team-season": {
-      eyebrow: "Holdturnering",
-      title: "Aktuel holdstilling",
-      description: "De fire bedste holdrunder tæller. Åbn Hold for at se holdsammensætning og runde-for-runde-historik.",
-    },
-    teams: {
-      eyebrow: `TGT ${selectedSeason}`,
-      title: "Hold",
-      description: "Se alle hold, deres placering og resultater runde for runde.",
-    },
     profiles: {
       eyebrow: `TGT ${selectedSeason}`,
-      title: "Spillere",
+      title: "Spillerprofiler",
       description: "Se alle spillere samlet og åbn deres profil uden at gå gennem leaderboardet.",
     },
     rounds: {
@@ -785,6 +1030,244 @@ function Leaderboard({ onOpenLogin }) {
           .tgt-team-rounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .tgt-team-final-kpi { align-items: flex-start; flex-direction: column; }
         }
+        .tgt-public-shell .main-content {
+          width: min(1180px, calc(100% - 32px));
+          margin-left: auto;
+          margin-right: auto;
+          padding-left: 0;
+          padding-right: 0;
+        }
+        .tgt-public-shell .leaderboard-card {
+          width: 100% !important;
+          margin-left: auto !important;
+          margin-right: auto !important;
+        }
+        .tgt-public-shell .section-heading {
+          justify-content: center;
+          text-align: center;
+        }
+        .tgt-public-shell .section-heading > div:first-child {
+          margin-left: auto;
+          margin-right: auto;
+        }
+        .tgt-public-shell .section-heading .description {
+          max-width: 760px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+        .tgt-admin-round-card {
+          width: min(100%, 980px);
+          margin: 0 auto 16px;
+          padding: clamp(18px, 3vw, 26px) !important;
+          border: 1px solid rgba(25,65,48,.12) !important;
+          border-radius: 20px !important;
+          background: #fffdf8 !important;
+          box-shadow: 0 12px 32px rgba(18,48,36,.07);
+        }
+        .tgt-admin-round-fields {
+          display: grid !important;
+          grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          gap: 12px !important;
+          margin-top: 16px !important;
+        }
+        .tgt-admin-field {
+          min-width: 0;
+          padding: 12px;
+          border: 1px solid rgba(25,65,48,.10);
+          border-radius: 14px;
+          background: #f5f7f3;
+        }
+        .tgt-admin-field-label {
+          display: block;
+          margin: 0 0 8px;
+          color: #557064;
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: .11em;
+          text-transform: uppercase;
+        }
+        .tgt-admin-field .form-input {
+          width: 100%;
+          margin: 0 !important;
+          background: #fffdf8 !important;
+        }
+        .tgt-admin-round-card h3,
+        .tgt-admin-round-card > p {
+          text-align: center;
+        }
+        @media (max-width: 760px) {
+          .tgt-public-shell .main-content { width: calc(100% - 16px); }
+          .tgt-public-shell .section-heading { align-items: center; flex-direction: column; }
+          .tgt-admin-round-fields { grid-template-columns: 1fr !important; }
+          .tgt-admin-round-card { padding: 15px !important; border-radius: 16px !important; }
+        }
+        .tgt-season-leaderboard th:nth-child(2),
+        .tgt-season-leaderboard td:nth-child(2),
+        .tgt-team-leaderboard th:nth-child(2),
+        .tgt-team-leaderboard td:nth-child(2) {
+          text-align: left !important;
+        }
+        .tgt-season-leaderboard .player-name,
+        .tgt-team-leaderboard .player-name {
+          display: block;
+          width: 100%;
+          text-align: left !important;
+        }
+        .tgt-team-leaderboard th:first-child,
+        .tgt-team-leaderboard td:first-child {
+          text-align: center !important;
+        }
+        .tgt-team-leaderboard th:last-child,
+        .tgt-team-leaderboard td:last-child {
+          text-align: right !important;
+        }
+        .tgt-public-shell .section-heading { justify-content: center !important; text-align: center; }
+        .tgt-public-shell .section-heading > div:first-child { margin-left: auto; margin-right: auto; }
+        .tgt-public-shell .section-heading .description { max-width: 760px; margin-left: auto; margin-right: auto; }
+        .tgt-final-flow-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-top:22px; }
+        .tgt-final-flow-card { min-height:120px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:18px; border:1px solid rgba(240,207,130,.42); border-radius:18px; background:linear-gradient(145deg,#052a1f,#0a4935); box-shadow:0 12px 28px rgba(3,31,23,.12); text-align:center; }
+        .tgt-final-flow-card span { color:#cdb46d; font-size:10px; font-weight:900; letter-spacing:.15em; text-transform:uppercase; }
+        .tgt-final-flow-card strong { color:#f7df99; font-size:18px; line-height:1.35; }
+        @media(max-width:700px){.tgt-final-flow-grid{grid-template-columns:1fr}.tgt-final-flow-card{min-height:92px}}
+        .tgt-public-shell .tgt-tabs {
+          justify-content: center !important;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 10px !important;
+          width: 100%;
+          margin: 0 auto;
+          text-align: center;
+        }
+        .tgt-public-shell .tgt-tabs button {
+          width: auto !important;
+          min-width: 118px;
+          margin: 0 !important;
+        }
+        .tgt-public-shell .card-header {
+          position: relative;
+          display: grid !important;
+          grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+          align-items: center;
+          gap: 18px;
+          text-align: center;
+        }
+        .tgt-public-shell .card-header > div:first-child {
+          grid-column: 2;
+          width: min(760px, 100%);
+          margin: 0 auto;
+          text-align: center;
+        }
+        .tgt-public-shell .card-header > div:first-child .eyebrow,
+        .tgt-public-shell .card-header > div:first-child h2,
+        .tgt-public-shell .card-header > div:first-child .description {
+          text-align: center !important;
+          margin-left: auto !important;
+          margin-right: auto !important;
+        }
+        .tgt-public-shell .card-header > :last-child:not(:first-child) {
+          grid-column: 3;
+          justify-self: end;
+        }
+        .tgt-season-leaderboard th:nth-child(2),
+        .tgt-season-leaderboard td:nth-child(2),
+        .tgt-team-leaderboard th:nth-child(2),
+        .tgt-team-leaderboard td:nth-child(2) {
+          text-align: left !important;
+        }
+        .tgt-season-leaderboard .player-name,
+        .tgt-team-leaderboard .player-name {
+          display: block;
+          text-align: left !important;
+        }
+        .tgt-admin-polish {
+          width: min(1120px, 100%);
+          margin: 0 auto;
+        }
+        .tgt-admin-polish > section,
+        .tgt-admin-polish > article,
+        .tgt-admin-polish form > section {
+          overflow: hidden;
+          border: 1px solid rgba(25,65,48,.12) !important;
+          border-radius: 20px !important;
+          background: #fffdf8 !important;
+          box-shadow: 0 12px 32px rgba(18,48,36,.07);
+        }
+        .tgt-admin-polish h2,
+        .tgt-admin-polish h3,
+        .tgt-admin-polish .eyebrow,
+        .tgt-admin-polish .description {
+          overflow-wrap: anywhere;
+        }
+        .tgt-admin-polish nav {
+          justify-content: center !important;
+          flex-wrap: wrap !important;
+          gap: 10px !important;
+        }
+        .tgt-admin-polish nav button {
+          min-width: 132px;
+          margin: 0 !important;
+        }
+        .tgt-admin-polish .flight-information {
+          gap: 12px !important;
+        }
+        .tgt-admin-polish .flight-information > div {
+          min-width: 0;
+          padding: 16px !important;
+        }
+        .tgt-admin-polish .flight-information span,
+        .tgt-admin-polish .flight-information strong {
+          display: block;
+          overflow-wrap: anywhere;
+        }
+        .tgt-admin-polish .flight-information span {
+          margin-bottom: 9px;
+        }
+        .tgt-admin-polish input,
+        .tgt-admin-polish select,
+        .tgt-admin-polish textarea,
+        .tgt-admin-polish .form-input {
+          width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
+        }
+        @media (max-width: 760px) {
+          .tgt-public-shell .tgt-tabs {
+            justify-content: center !important;
+            overflow: visible !important;
+            flex-wrap: wrap !important;
+            padding-left: 10px !important;
+            padding-right: 10px !important;
+          }
+          .tgt-public-shell .tgt-tabs button {
+            flex: 1 1 calc(50% - 10px) !important;
+            min-width: 0;
+          }
+          .tgt-public-shell .card-header {
+            display: flex !important;
+            flex-direction: column;
+            justify-content: center;
+            text-align: center;
+          }
+          .tgt-public-shell .card-header > :last-child:not(:first-child) {
+            align-self: center;
+          }
+          .tgt-admin-polish nav button {
+            flex: 1 1 calc(50% - 10px);
+            min-width: 0;
+          }
+          .tgt-admin-polish .flight-information {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+        @media (max-width: 420px) {
+          .tgt-public-shell .tgt-tabs button,
+          .tgt-admin-polish nav button {
+            flex-basis: 100% !important;
+          }
+          .tgt-admin-polish .flight-information {
+            grid-template-columns: 1fr !important;
+          }
+        }
         .tgt-wordmark-mark { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #d7b469; border-radius: 50%; color: #f0cf82; font-family: Georgia, serif; font-size: 17px; font-weight: 900; letter-spacing: .04em; text-shadow: 0 1px 14px rgba(215,180,105,.35); }
         .tgt-menu-button { min-width: 46px; min-height: 46px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: transparent; color: #fff; cursor: pointer; font-size: 24px; }
         .tgt-premium-hero { position: relative; overflow: hidden; padding: clamp(54px, 9vw, 110px) clamp(20px, 7vw, 92px); color: #fff; background: radial-gradient(circle at 78% 20%, rgba(215,180,105,.24), transparent 28%), linear-gradient(135deg, #062f22 0%, #0b5239 58%, #123a2d 100%); }
@@ -829,6 +1312,180 @@ function Leaderboard({ onOpenLogin }) {
           .tgt-hof-trophy { width: 78px; height: 78px; font-size: 40px; }
           .tgt-hof-year { font-size: 50px; }
         }
+
+        /* Final alignment override: center navigation and heading, keep name columns left */
+        .tgt-public-shell .tgt-tabs {
+          display: flex !important;
+          justify-content: center !important;
+          align-items: center !important;
+          flex-wrap: wrap !important;
+          gap: 10px !important;
+          width: 100% !important;
+          padding: 12px 16px !important;
+          margin: 0 auto !important;
+          overflow: visible !important;
+          text-align: center !important;
+        }
+        .tgt-public-shell .tgt-tabs > button {
+          flex: 0 0 auto !important;
+          width: auto !important;
+          min-width: 118px !important;
+          margin: 0 !important;
+          white-space: normal !important;
+        }
+        .tgt-public-shell .card-header {
+          display: grid !important;
+          grid-template-columns: 1fr minmax(280px, 760px) 1fr !important;
+          align-items: center !important;
+          gap: 18px !important;
+          text-align: center !important;
+        }
+        .tgt-public-shell .card-header > div:first-child {
+          grid-column: 2 !important;
+          width: 100% !important;
+          margin: 0 auto !important;
+          text-align: center !important;
+        }
+        .tgt-public-shell .card-header > div:first-child > * {
+          text-align: center !important;
+          margin-left: auto !important;
+          margin-right: auto !important;
+        }
+        .tgt-public-shell .card-header > .live-badge {
+          grid-column: 3 !important;
+          justify-self: end !important;
+        }
+        .tgt-season-leaderboard th:nth-child(2),
+        .tgt-season-leaderboard td:nth-child(2),
+        .tgt-team-leaderboard th:nth-child(2),
+        .tgt-team-leaderboard td:nth-child(2),
+        .tgt-season-leaderboard .player-name,
+        .tgt-team-leaderboard .player-name {
+          text-align: left !important;
+        }
+
+        /* Final admin polish: labels and values never run together */
+        .tgt-admin-polish .flight-information {
+          display: grid !important;
+          grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)) !important;
+          gap: 14px !important;
+          padding: 16px !important;
+          background: #f4f0e6 !important;
+        }
+        .tgt-admin-polish .flight-information > div {
+          min-height: 104px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 14px !important;
+          padding: 16px 12px !important;
+          border: 1px solid rgba(236,201,115,.44) !important;
+          border-radius: 17px !important;
+          text-align: center !important;
+          background: linear-gradient(145deg,#052a1f,#0a4935) !important;
+          box-shadow: 0 10px 24px rgba(3,31,23,.10) !important;
+        }
+        .tgt-admin-polish .flight-information > div > span {
+          display: block !important;
+          margin: 0 !important;
+          color: #cdb46d !important;
+          font-size: 10px !important;
+          font-weight: 900 !important;
+          letter-spacing: .13em !important;
+          line-height: 1.2 !important;
+          text-transform: uppercase !important;
+        }
+        .tgt-admin-polish .flight-information > div > strong {
+          display: block !important;
+          margin: 0 !important;
+          color: #f7df99 !important;
+          font-family: Georgia, serif !important;
+          font-size: 23px !important;
+          line-height: 1.2 !important;
+          overflow-wrap: anywhere !important;
+        }
+        .tgt-admin-polish .tgt-final-flow-grid {
+          display: grid !important;
+          grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          gap: 14px !important;
+          margin-top: 22px !important;
+        }
+        .tgt-admin-polish .tgt-final-flow-card {
+          min-height: 124px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 16px !important;
+          padding: 18px !important;
+          border: 1px solid rgba(236,201,115,.44) !important;
+          border-radius: 18px !important;
+          text-align: center !important;
+          background: linear-gradient(145deg,#052a1f,#0a4935) !important;
+        }
+        .tgt-admin-polish .tgt-final-flow-card span {
+          display: block !important;
+          color: #cdb46d !important;
+          font-size: 10px !important;
+          font-weight: 900 !important;
+          letter-spacing: .14em !important;
+          text-transform: uppercase !important;
+        }
+        .tgt-admin-polish .tgt-final-flow-card strong {
+          display: block !important;
+          color: #f7df99 !important;
+          font-size: 18px !important;
+          line-height: 1.35 !important;
+        }
+        @media (max-width: 700px) {
+          .tgt-public-shell .tgt-tabs {
+            justify-content: center !important;
+            flex-wrap: wrap !important;
+            overflow: visible !important;
+            padding: 10px !important;
+          }
+          .tgt-public-shell .tgt-tabs > button {
+            flex: 1 1 calc(50% - 10px) !important;
+            min-width: 0 !important;
+          }
+          .tgt-public-shell .card-header {
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+          }
+          .tgt-public-shell .card-header > .live-badge {
+            align-self: center !important;
+          }
+          .tgt-admin-polish .tgt-final-flow-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .tgt-admin-polish .flight-information {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+        @media (max-width: 420px) {
+          .tgt-public-shell .tgt-tabs > button {
+            flex-basis: 100% !important;
+          }
+          .tgt-admin-polish .flight-information {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
+        .tgt-course-database { width:min(1120px,100%); margin:0 auto 24px; padding:clamp(18px,3vw,28px); border:1px solid rgba(25,65,48,.12); border-radius:22px; background:#fffdf8; box-shadow:0 14px 38px rgba(18,48,36,.08); }
+        .tgt-course-db-header { display:flex; align-items:center; justify-content:space-between; gap:20px; text-align:left; }
+        .tgt-course-db-header h2,.tgt-course-db-header p { margin-top:4px; }
+        .tgt-course-db-count { min-width:110px; padding:15px; display:flex; flex-direction:column; align-items:center; gap:7px; border-radius:16px; color:#f7df99; background:linear-gradient(145deg,#052a1f,#0a4935); }
+        .tgt-course-db-count span { color:#cdb46d; font-size:10px; font-weight:900; letter-spacing:.14em; text-transform:uppercase; }.tgt-course-db-count strong{font-size:26px}
+        .tgt-course-db-layout { display:grid; grid-template-columns:minmax(250px,320px) minmax(0,1fr); gap:18px; margin-top:22px; }
+        .tgt-course-db-sidebar,.tgt-course-db-main { min-width:0; }.tgt-course-list{display:grid;gap:8px;max-height:440px;overflow:auto;margin:12px 0 18px;padding-right:4px}
+        .tgt-course-list button{display:flex;flex-direction:column;gap:4px;padding:13px;text-align:left;border:1px solid rgba(25,65,48,.12);border-radius:13px;background:#fff;color:#173326;cursor:pointer}.tgt-course-list button.active{color:#f7df99;border-color:#d8b765;background:#073727}.tgt-course-list button span{font-size:12px;opacity:.76}
+        .tgt-course-form,.tgt-hole-editor,.tgt-csv-import,.tgt-course-title{padding:18px;border:1px solid rgba(25,65,48,.11);border-radius:17px;background:#f5f7f3}.tgt-course-form{display:grid;gap:10px}.tgt-course-form h3{margin:0}.tgt-tee-form{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:14px}.tgt-tee-form h3,.tgt-tee-form button{grid-column:1/-1}
+        .tgt-course-title{text-align:center}.tgt-course-title h3{margin:4px 0}.tgt-tee-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}.tgt-tee-grid article{display:flex;flex-direction:column;align-items:center;gap:7px;padding:16px;border:1px solid rgba(236,201,115,.44);border-radius:15px;color:#f7df99;background:linear-gradient(145deg,#052a1f,#0a4935);text-align:center}.tgt-tee-grid article span{color:#cdb46d;font-size:9px;font-weight:900;letter-spacing:.15em}.tgt-tee-grid article strong{font-size:22px}.tgt-tee-grid article small{color:rgba(247,223,153,.74)}
+        .tgt-hole-editor{margin-top:14px}.tgt-hole-editor-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.tgt-hole-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:14px 0}.tgt-hole-grid label{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:10px;border-radius:12px;background:#fff;border:1px solid rgba(25,65,48,.11);text-align:center}.tgt-hole-grid label>span{grid-column:1/-1;font-weight:900;color:#174332}.tgt-hole-grid input{width:100%;min-width:0;padding:8px;border:1px solid #d8e0da;border-radius:8px;text-align:center}.tgt-hole-grid small{color:#6a7b73;font-size:9px;text-transform:uppercase}.tgt-csv-import{margin-top:14px;text-align:center}.tgt-csv-import input{display:block;margin:14px auto}.tgt-csv-import button{max-width:320px}
+        @media(max-width:820px){.tgt-course-db-layout{grid-template-columns:1fr}.tgt-course-list{max-height:280px}.tgt-hole-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+        @media(max-width:520px){.tgt-course-database{padding:14px}.tgt-course-db-header{align-items:stretch;flex-direction:column;text-align:center}.tgt-course-db-count{width:100%}.tgt-tee-form{grid-template-columns:1fr}.tgt-hole-editor-head{align-items:stretch;flex-direction:column}.tgt-hole-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
       `}</style>
 
       <header className="tgt-public-topbar">
@@ -844,6 +1501,14 @@ function Leaderboard({ onOpenLogin }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button
             type="button"
+            className="tgt-mobile-marker-login"
+            onClick={onOpenLogin}
+          >
+            MARKØR-LOGIN
+          </button>
+          <button
+            type="button"
+            className="tgt-desktop-hall-button"
             onClick={() => openPublicView("individual", "hall")}
             style={{
               minHeight: 44,
@@ -893,9 +1558,9 @@ function Leaderboard({ onOpenLogin }) {
             <nav className="tgt-drawer-nav">
               <button type="button" onClick={() => openPublicView("individual", "season")}>Leaderboard</button>
               <button type="button" onClick={() => openPublicView("individual", "rounds")}>Runder</button>
-              <button type="button" onClick={() => openPublicView("individual", "profiles")}>Spillere</button>
+              <button type="button" onClick={() => openPublicView("individual", "profiles")}>Spillerprofiler</button>
               <button type="button" onClick={() => openPublicView("individual", "live")}>Live leaderboard</button>
-              <button type="button" onClick={() => openPublicView("team", "team-season")}>Holdturneringen</button>
+              <button type="button" onClick={() => openPublicView("team", "team")}>Holdturneringen</button>
               <button type="button" onClick={() => openPublicView("individual", "final")}>Finalestillingen</button>
               <button type="button" onClick={() => openPublicView("individual", "closest")}>Tættest på pinden</button>
               <button type="button" onClick={() => openPublicView("individual", "hall")}>Hall of Fame</button>
@@ -905,7 +1570,7 @@ function Leaderboard({ onOpenLogin }) {
                   {selectedSeason === season ? "●" : "○"} {season}
                 </button>
               ))}
-              <button type="button" onClick={() => { setMenuOpen(false); onOpenLogin(); }}>Markør- og admin-login</button>
+              <button type="button" className="tgt-menu-marker-login" onClick={() => { setMenuOpen(false); onOpenLogin(); }}>Markør- og admin-login</button>
             </nav>
           </aside>
         </>
@@ -940,7 +1605,7 @@ function Leaderboard({ onOpenLogin }) {
             </button>
             <button
               type="button"
-              className="tgt-secondary-action"
+              className="tgt-secondary-action tgt-hero-marker-login"
               onClick={onOpenLogin}
             >
               Markør-login
@@ -953,7 +1618,7 @@ function Leaderboard({ onOpenLogin }) {
         <section className="leaderboard-card">
           <nav
             aria-label="Hovednavigation"
-            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: 10, background: "#082f23" }}
+            style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, width: "100%", padding: 10, margin: "0 auto", background: "#082f23" }}
           >
             <button type="button" onClick={() => { setMainTab("individual"); setTab("season"); }} className={tab !== "rounds" ? "login-submit-button" : "login-cancel-button"} style={{ marginTop: 0 }}>LEADERBOARD</button>
             <button type="button" onClick={() => setTab("rounds")} className={tab === "rounds" ? "login-submit-button" : "login-cancel-button"} style={{ marginTop: 0 }}>RUNDER</button>
@@ -984,13 +1649,13 @@ function Leaderboard({ onOpenLogin }) {
               }
               style={{ marginTop: 0, fontSize: 17 }}
             >
-              Individuel turnering
+              Individuel
             </button>
             <button
               type="button"
               onClick={() => {
                 setMainTab("team");
-                setTab("team-season");
+                setTab("team");
               }}
               className={
                 mainTab === "team"
@@ -999,7 +1664,7 @@ function Leaderboard({ onOpenLogin }) {
               }
               style={{ marginTop: 0, fontSize: 17 }}
             >
-              Holdturnering
+              Hold
             </button>
           </nav>
           )}
@@ -1032,8 +1697,7 @@ function Leaderboard({ onOpenLogin }) {
             {mainTab === "individual" ? (
               <>
                 {[
-                  ["season", "Sæsonstilling"],
-                  ["profiles", "Spillere"],
+                  ["season", "Overblik"],
                   ["live", liveData?.round ? `Runde ${liveData.round.round_number}` : "Live runde"],
                   ["final", "Samlet finalestilling"],
                   ["closest", "Tættest på pinden"],
@@ -1054,22 +1718,14 @@ function Leaderboard({ onOpenLogin }) {
                 ))}
               </>
             ) : (
-              <>
-                {[
-                  ["team-season", "Sæsonstilling"],
-                  ["teams", "Hold"],
-                ].map(([value, label]) => (
-                  <button
-                    type="button"
-                    key={value}
-                    onClick={() => setTab(value)}
-                    className={tab === value ? "login-submit-button" : "login-cancel-button"}
-                    style={{ width: "auto", marginTop: 0 }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </>
+              <button
+                type="button"
+                onClick={() => setTab("team")}
+                className="login-submit-button"
+                style={{ width: "auto", marginTop: 0 }}
+              >
+                Overblik
+              </button>
             )}
           </div>
           )}
@@ -1195,6 +1851,7 @@ function Leaderboard({ onOpenLogin }) {
                     return (
                       <Fragment key={player.player_id}>
                         <tr
+                          className={`tgt-live-player-row${isOpen ? " is-open" : ""}`}
                           onClick={() => {
                             setSelectedPlayer(isOpen ? null : player);
                             setSelectedPlayerMode(isOpen ? null : "season");
@@ -1269,19 +1926,34 @@ function Leaderboard({ onOpenLogin }) {
                                   </p>
                                 ) : (
                                   <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                                    {playerRounds.map((round) => (
-                                      <div key={round.roundId} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: 12, borderRadius: 10, background: "#073727", border: "1px solid rgba(240,207,130,.38)", color: "#f0cf82" }}>
-                                        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                          Runde {round.roundNumber}
-                                          {countingRoundNumbers.has(round.roundNumber) && (
-                                            <small style={{ padding: "4px 8px", borderRadius: 999, background: "rgba(240,207,130,.14)", border: "1px solid rgba(240,207,130,.5)", color: "#f0cf82", fontWeight: 900, letterSpacing: ".06em" }}>
-                                              TÆLLENDE
-                                            </small>
+                                    {playerRounds.map((round) => {
+                                      const roundKey = `${player.player_id}-${round.roundId}`;
+                                      const scorecardOpen = expandedHistoricalRoundKey === roundKey;
+                                      return (
+                                        <div key={roundKey} style={{ borderRadius: 12, background: "#073727", border: "1px solid rgba(240,207,130,.38)", color: "#f0cf82", overflow: "hidden" }}>
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              if (round.hasScorecard) {
+                                                setExpandedHistoricalRoundKey(scorecardOpen ? null : roundKey);
+                                              }
+                                            }}
+                                            style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: 14, border: 0, background: "transparent", color: "inherit", cursor: round.hasScorecard ? "pointer" : "default", textAlign: "left" }}
+                                          >
+                                            <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 9 }}>
+                                              Runde {round.roundNumber}
+                                              {countingRoundNumbers.has(round.roundNumber) && <small style={{ padding: "4px 8px", borderRadius: 999, background: "rgba(240,207,130,.14)", border: "1px solid rgba(240,207,130,.5)", color: "#f0cf82", fontWeight: 900, letterSpacing: ".06em" }}>TÆLLENDE</small>}
+                                              {round.hasScorecard && <small style={{ color: "#d8bd76", fontWeight: 800 }}>{scorecardOpen ? "Luk scorekort" : "Se scorekort"}</small>}
+                                            </span>
+                                            <strong style={{ color: "#f5dc93", fontSize: 17 }}>{formatScore(round.scoreToPar)}</strong>
+                                          </button>
+                                          {scorecardOpen && round.hasScorecard && (
+                                            <SplitScorecard scorecard={round.scorecard} />
                                           )}
-                                        </span>
-                                        <strong style={{ color: "#f5dc93", fontSize: 17 }}>{round.holesPlayed === 18 ? formatScore(round.scoreToPar) : `${round.holesPlayed} huller`}</strong>
-                                      </div>
-                                    ))}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 )}
 
@@ -1298,16 +1970,62 @@ function Leaderboard({ onOpenLogin }) {
           )}
 
           {!loading && !errorMessage && tab === "live" && (
-            <div className="table-wrapper">
-              <table>
+            <div className="table-wrapper tgt-live-gamebook">
+              <div className="tgt-live-mobile-list">
+                <div className="tgt-live-mobile-head">
+                  <span>#</span>
+                  <span>Spiller</span>
+                  <span>Score</span>
+                  <span>Thru</span>
+                </div>
+                {liveLeaderboard.map((player, index) => {
+                  const isOpen =
+                    selectedPlayerMode === "live" &&
+                    selectedPlayer?.playerId === player.playerId;
+
+                  return (
+                    <article key={`mobile-${player.playerId}`} className={`tgt-live-mobile-card${isOpen ? " is-open" : ""}`}>
+                      <button
+                        type="button"
+                        className="tgt-live-mobile-player"
+                        onClick={() => {
+                          setSelectedPlayer(isOpen ? null : player);
+                          setSelectedPlayerMode(isOpen ? null : "live");
+                        }}
+                      >
+                        <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
+                        <span className="tgt-live-mobile-name">
+                          <strong>{player.playerName}</strong>
+                          <small>HCP {player.handicap ?? "–"} · SPH {player.playingHandicap ?? "–"}</small>
+                        </span>
+                        <strong className="tgt-live-mobile-score">
+                          {player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}
+                        </strong>
+                        <strong className="tgt-live-mobile-thru">{player.holesPlayed}</strong>
+                      </button>
+                      {isOpen && (
+                        <div className="tgt-live-mobile-scorecard">
+                          <SplitScorecard
+                            scorecard={player.scorecard ?? []}
+                            handicapIndex={player.handicapIndex ?? player.handicap}
+                            playingHandicap={player.playingHandicap}
+                            position={index + 1}
+                          />
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+              <table className="tgt-live-desktop-table">
                 <thead>
                   <tr>
-                    <th className="position-column">Placering</th>
+                    <th className="position-column">#</th>
                     <th>Spiller</th>
-                    <th className="number-column">Thru</th>
-                    <th className="number-column">Brutto</th>
+                    <th className="number-column">Score</th>
+                    <th className="number-column">Til par</th>
                     <th className="number-column">Bonus</th>
-                    <th className="number-column">Officiel</th>
+                    <th className="number-column">Thru</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1330,26 +2048,19 @@ function Leaderboard({ onOpenLogin }) {
                           </td>
                           <td>
                             <span className="player-name">{player.playerName}</span>
-                            <small style={{ display: "block", color: "#78827d" }}>Handicap: {player.handicap ?? "Ikke angivet"}</small>
+                            <small className="tgt-live-player-meta">HCP {player.handicap ?? "–"} · SPH {player.playingHandicap ?? "–"}</small>
                           </td>
-                          <td className="number-column">{player.holesPlayed}</td>
-                          <td className="number-column score">{player.holesPlayed === 0 ? "Ikke startet" : formatScore(player.scoreToPar)}</td>
-                          <td className="number-column">{player.earnedBonus > 0 ? player.hasCompletedRound ? `-${player.appliedBonus}` : `${player.earnedBonus} afventer` : "–"}</td>
-                          <td className="number-column final-score">{player.holesPlayed === 0 ? "Ikke startet" : formatScore(player.officialToPar)}</td>
+                          <td className="number-column tgt-live-gross-score">{player.holesPlayed === 0 ? "–" : player.grossStrokes}</td>
+                          <td className="number-column final-score tgt-live-to-par">{player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}</td>
+                          <td className="number-column tgt-live-bonus">{player.earnedBonus > 0 ? player.hasCompletedRound ? `-${player.appliedBonus}` : `${player.earnedBonus} afventer` : "–"}</td>
+                          <td className="number-column tgt-live-thru">{player.holesPlayed}</td>
                         </tr>
                         {isOpen && (
                           <tr>
                             <td colSpan="6" style={{ padding: 0 }}>
-                              <div style={{ padding: 16, background: "#f7f3e9", overflowX: "auto" }}>
+                              <div className="tgt-live-scorecard-detail">
                                 <strong>{player.playerName} · scorekort efter {player.holesPlayed} huller</strong>
-                                <table style={{ minWidth: 760, marginTop: 12 }}>
-                                  <thead><tr><th>Hul</th>{player.scorecard?.map((hole) => <th key={hole.holeNumber}>{hole.holeNumber}</th>)}</tr></thead>
-                                  <tbody>
-                                    <tr><th>Par</th>{player.scorecard?.map((hole) => <td key={hole.holeNumber}>{hole.par}</td>)}</tr>
-                                    <tr><th>Slag</th>{player.scorecard?.map((hole) => <td key={hole.holeNumber} style={{ textAlign: "center" }}>{hole.strokes === null ? "–" : <span style={getScoreMarkStyle(hole.toPar)}>{hole.strokes}</span>}</td>)}</tr>
-                                    <tr><th>Resultat</th>{player.scorecard?.map((hole) => <td key={hole.holeNumber}>{hole.toPar === null ? "–" : formatScore(hole.toPar)}</td>)}</tr>
-                                  </tbody>
-                                </table>
+                                <SplitScorecard scorecard={player.scorecard ?? []} handicapIndex={player.handicapIndex ?? player.handicap} playingHandicap={player.playingHandicap} position={index + 1} />
                               </div>
                             </td>
                           </tr>
@@ -1365,32 +2076,7 @@ function Leaderboard({ onOpenLogin }) {
             </div>
           )}
 
-          {!loading && !errorMessage && tab === "team-season" && (
-            <div className="table-wrapper tgt-team-leaderboard">
-              <table>
-                <thead>
-                  <tr>
-                    <th className="position-column">#</th>
-                    <th>Hold</th>
-                    <th className="number-column">Runder</th>
-                    <th className="number-column">Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historicalTeamStandings.map((team, index) => (
-                    <tr key={team.teamId}>
-                      <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span></td>
-                      <td><span className="player-name">{team.teamName}</span></td>
-                      <td className="number-column">{team.roundsPlayed}</td>
-                      <td className="number-column final-score">{formatScore(team.halvedScore)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {historicalTeamStandings.length === 0 && <div className="status-box">Der er ingen historiske holdresultater.</div>}
-            </div>
-          )}
-          {!loading && !errorMessage && tab === "teams" && (
+          {!loading && !errorMessage && tab === "team" && (
             <div className="table-wrapper tgt-team-leaderboard">
               <table>
                 <thead>
@@ -1687,6 +2373,20 @@ function Leaderboard({ onOpenLogin }) {
           </div>
         </section>
       </main>
+      <nav className="tgt-mobile-bottom-nav" aria-label="Mobilnavigation">
+        <button type="button" className={tab === "season" ? "active" : ""} onClick={() => openPublicView("individual", "season")}>
+          <span aria-hidden="true">◆</span><small>Leaderboard</small>
+        </button>
+        <button type="button" className={tab === "live" ? "active" : ""} onClick={() => openPublicView("individual", "live")}>
+          <span aria-hidden="true">●</span><small>Live</small>
+        </button>
+        <button type="button" className={tab === "rounds" ? "active" : ""} onClick={() => openPublicView("individual", "rounds")}>
+          <span aria-hidden="true">▦</span><small>Runder</small>
+        </button>
+        <button type="button" onClick={() => setMenuOpen(true)} aria-label="Åbn mere-menu">
+          <span aria-hidden="true">☰</span><small>Mere</small>
+        </button>
+      </nav>
     </div>
   );
 }
@@ -2827,6 +3527,7 @@ function SeasonRoundsAdmin({ season = 2027 }) {
               return (
                 <article
                   key={round.id}
+                  className="tgt-admin-round-card"
                   style={{
                     padding: 16,
                     border: "1px solid #e1e8e3",
@@ -2872,14 +3573,9 @@ function SeasonRoundsAdmin({ season = 2027 }) {
                     />
                   </div>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1.2fr 1fr 1fr",
-                      gap: 10,
-                      marginTop: 10,
-                    }}
-                  >
+                  <div className="tgt-admin-round-fields">
+                    <label className="tgt-admin-field">
+                      <span className="tgt-admin-field-label">Bane</span>
                     <select
                       value={draft.courseId}
                       onChange={(event) =>
@@ -2895,6 +3591,9 @@ function SeasonRoundsAdmin({ season = 2027 }) {
                         </option>
                       ))}
                     </select>
+                    </label>
+                    <label className="tgt-admin-field">
+                      <span className="tgt-admin-field-label">Tee</span>
                     <select
                       value={draft.teeId}
                       onChange={(event) =>
@@ -2910,6 +3609,9 @@ function SeasonRoundsAdmin({ season = 2027 }) {
                         </option>
                       ))}
                     </select>
+                    </label>
+                    <label className="tgt-admin-field">
+                      <span className="tgt-admin-field-label">Rundetype</span>
                     <select
                       value={draft.roundType}
                       onChange={(event) =>
@@ -2922,6 +3624,7 @@ function SeasonRoundsAdmin({ season = 2027 }) {
                       <option value="team_final">Holdfinale</option>
                       <option value="individual_final">Individuel finale</option>
                     </select>
+                    </label>
                   </div>
 
                   <div
@@ -2941,6 +3644,7 @@ function SeasonRoundsAdmin({ season = 2027 }) {
                         updateDraft(round.id, field, value)
                       }
                     />
+                    <ClosestToPinHoleSelector roundId={round.id} courseId={draft.courseId} disabled={isLocked} />
                     <button
                       type="button"
                       onClick={() => handleSaveRound(round.id)}
@@ -4079,6 +4783,257 @@ function FlightAdmin({ season = 2027 }) {
   );
 }
 
+
+function CourseDatabaseAdmin() {
+  const [courses, setCourses] = useState([]);
+  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [tees, setTees] = useState([]);
+  const [holes, setHoles] = useState([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [newCourse, setNewCourse] = useState({ clubName: "", courseName: "" });
+  const [newTee, setNewTee] = useState({ teeName: "", courseRating: "", slopeRating: "", totalLength: "" });
+  const [csvRows, setCsvRows] = useState([]);
+
+  const selectedCourse = courses.find((course) => course.id === selectedCourseId) ?? null;
+  const filteredCourses = courses.filter((course) =>
+    `${course.club_name} ${course.course_name}`.toLowerCase().includes(search.trim().toLowerCase())
+  );
+
+  const loadCourses = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage("");
+    const { data, error } = await supabase
+      .from("courses")
+      .select("id, club_name, course_name")
+      .order("club_name", { ascending: true })
+      .order("course_name", { ascending: true });
+    if (error) setErrorMessage(error.message);
+    else setCourses(data ?? []);
+    setLoading(false);
+  }, []);
+
+  const loadCourseDetails = useCallback(async (courseId) => {
+    if (!courseId) {
+      setTees([]);
+      setHoles([]);
+      return;
+    }
+    setErrorMessage("");
+    const [teeResult, holeResult] = await Promise.all([
+      supabase.from("course_tees").select("id, tee_name, course_rating, slope_rating, total_length_meters").eq("course_id", courseId).order("tee_name"),
+      supabase.from("course_holes").select("id, hole_number, par, stroke_index").eq("course_id", courseId).order("hole_number"),
+    ]);
+    if (teeResult.error) setErrorMessage(teeResult.error.message);
+    else setTees(teeResult.data ?? []);
+    if (holeResult.error) setErrorMessage(holeResult.error.message);
+    else setHoles(holeResult.data ?? []);
+  }, []);
+
+  useEffect(() => { loadCourses(); }, [loadCourses]);
+  useEffect(() => { loadCourseDetails(selectedCourseId); }, [selectedCourseId, loadCourseDetails]);
+
+  async function createCourse(event) {
+    event.preventDefault();
+    if (!newCourse.clubName.trim() || !newCourse.courseName.trim()) return;
+    setSaving(true); setMessage(""); setErrorMessage("");
+    const { data, error } = await supabase.from("courses").insert({
+      club_name: newCourse.clubName.trim(),
+      course_name: newCourse.courseName.trim(),
+    }).select("id, club_name, course_name").single();
+    if (error) setErrorMessage(error.message);
+    else {
+      setMessage(`${data.club_name} · ${data.course_name} er oprettet.`);
+      setNewCourse({ clubName: "", courseName: "" });
+      await loadCourses();
+      setSelectedCourseId(data.id);
+    }
+    setSaving(false);
+  }
+
+  async function createTee(event) {
+    event.preventDefault();
+    if (!selectedCourseId || !newTee.teeName.trim()) return;
+    setSaving(true); setMessage(""); setErrorMessage("");
+    const { error } = await supabase.from("course_tees").insert({
+      course_id: selectedCourseId,
+      tee_name: newTee.teeName.trim(),
+      course_rating: newTee.courseRating === "" ? null : Number(newTee.courseRating),
+      slope_rating: newTee.slopeRating === "" ? null : Number(newTee.slopeRating),
+      total_length_meters: newTee.totalLength === "" ? null : Number(newTee.totalLength),
+    });
+    if (error) setErrorMessage(error.message);
+    else {
+      setMessage(`Tee ${newTee.teeName.trim()} er oprettet.`);
+      setNewTee({ teeName: "", courseRating: "", slopeRating: "", totalLength: "" });
+      await loadCourseDetails(selectedCourseId);
+    }
+    setSaving(false);
+  }
+
+  async function saveHoles() {
+    if (!selectedCourseId) return;
+    setSaving(true); setMessage(""); setErrorMessage("");
+    const payload = holes.map((hole) => ({
+      id: hole.id,
+      course_id: selectedCourseId,
+      hole_number: Number(hole.hole_number),
+      par: Number(hole.par),
+      stroke_index: Number(hole.stroke_index),
+    }));
+    const { error } = await supabase.from("course_holes").upsert(payload);
+    if (error) setErrorMessage(error.message);
+    else setMessage("Huldata er gemt.");
+    setSaving(false);
+  }
+
+  function prepare18Holes() {
+    setHoles(Array.from({ length: 18 }, (_, index) => {
+      const existing = holes.find((hole) => Number(hole.hole_number) === index + 1);
+      return existing ?? { course_id: selectedCourseId, hole_number: index + 1, par: 4, stroke_index: index + 1 };
+    }));
+  }
+
+  function parseCsv(text) {
+    const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return [];
+    const separator = lines[0].includes(";") ? ";" : ",";
+    const headers = lines[0].split(separator).map((value) => value.trim().toLowerCase());
+    return lines.slice(1).map((line) => {
+      const values = line.split(separator).map((value) => value.trim());
+      return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+    });
+  }
+
+  async function handleCsvFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setCsvRows(parseCsv(await file.text()));
+    setMessage(`${file.name} er indlæst og klar til import.`);
+  }
+
+  async function importCsv() {
+    if (csvRows.length === 0) return;
+    setSaving(true); setMessage(""); setErrorMessage("");
+    try {
+      const groups = new Map();
+      csvRows.forEach((row) => {
+        const club = row.club_name?.trim();
+        const course = row.course_name?.trim();
+        if (!club || !course) return;
+        const key = `${club}|||${course}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(row);
+      });
+      let importedCourses = 0;
+      for (const [key, rows] of groups.entries()) {
+        const [clubName, courseName] = key.split("|||");
+        let course = courses.find((item) => item.club_name === clubName && item.course_name === courseName);
+        if (!course) {
+          const result = await supabase.from("courses").insert({ club_name: clubName, course_name: courseName }).select("id, club_name, course_name").single();
+          if (result.error) throw result.error;
+          course = result.data;
+        }
+        importedCourses += 1;
+        const holePayload = rows.filter((row) => row.hole_number).map((row) => ({
+          course_id: course.id,
+          hole_number: Number(row.hole_number),
+          par: Number(row.par || 4),
+          stroke_index: Number(row.stroke_index || row.hole_number),
+        }));
+        if (holePayload.length) {
+          const existing = await supabase.from("course_holes").select("id, hole_number").eq("course_id", course.id);
+          if (existing.error) throw existing.error;
+          const ids = new Map((existing.data ?? []).map((hole) => [Number(hole.hole_number), hole.id]));
+          const result = await supabase.from("course_holes").upsert(holePayload.map((hole) => ({ ...hole, ...(ids.get(hole.hole_number) ? { id: ids.get(hole.hole_number) } : {}) })));
+          if (result.error) throw result.error;
+        }
+        const teeNames = [...new Set(rows.map((row) => row.tee_name).filter(Boolean))];
+        for (const teeName of teeNames) {
+          const teeRow = rows.find((row) => row.tee_name === teeName);
+          const existingTee = await supabase.from("course_tees").select("id").eq("course_id", course.id).eq("tee_name", teeName).maybeSingle();
+          if (existingTee.error) throw existingTee.error;
+          const teePayload = {
+            course_id: course.id,
+            tee_name: teeName,
+            course_rating: teeRow.course_rating ? Number(teeRow.course_rating.replace(",", ".")) : null,
+            slope_rating: teeRow.slope_rating ? Number(teeRow.slope_rating) : null,
+            total_length_meters: teeRow.total_length_meters ? Number(teeRow.total_length_meters) : null,
+          };
+          const teeResult = existingTee.data?.id
+            ? await supabase.from("course_tees").update(teePayload).eq("id", existingTee.data.id).select("id").single()
+            : await supabase.from("course_tees").insert(teePayload).select("id").single();
+          if (teeResult.error) throw teeResult.error;
+        }
+      }
+      setMessage(`${importedCourses} baneudgaver er importeret eller opdateret.`);
+      setCsvRows([]);
+      await loadCourses();
+    } catch (error) {
+      setErrorMessage(error.message ?? "CSV-importen kunne ikke gennemføres.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="tgt-course-database">
+      <header className="tgt-course-db-header">
+        <div><p className="eyebrow">Permanent TGT-register</p><h2>Banedatabase</h2><p className="description">Opret, søg og genbrug klubber, baner, tees og huldata på tværs af alle sæsoner.</p></div>
+        <div className="tgt-course-db-count"><span>Baner</span><strong>{courses.length}</strong></div>
+      </header>
+      {message && <div className="status-box">{message}</div>}
+      {errorMessage && <div className="error-box"><strong>Banedatabasen kunne ikke opdateres</strong><span>{errorMessage}</span></div>}
+      <div className="tgt-course-db-layout">
+        <aside className="tgt-course-db-sidebar">
+          <input className="form-input" type="search" placeholder="Søg klub eller bane..." value={search} onChange={(event) => setSearch(event.target.value)} />
+          <div className="tgt-course-list">
+            {loading ? <div className="status-box">Henter baner...</div> : filteredCourses.map((course) => (
+              <button type="button" key={course.id} className={selectedCourseId === course.id ? "active" : ""} onClick={() => setSelectedCourseId(course.id)}>
+                <strong>{course.club_name}</strong><span>{course.course_name}</span>
+              </button>
+            ))}
+          </div>
+          <form onSubmit={createCourse} className="tgt-course-form">
+            <h3>Ny bane</h3>
+            <input className="form-input" placeholder="Golfklub" value={newCourse.clubName} onChange={(event) => setNewCourse((current) => ({ ...current, clubName: event.target.value }))} />
+            <input className="form-input" placeholder="Bane eller kombination" value={newCourse.courseName} onChange={(event) => setNewCourse((current) => ({ ...current, courseName: event.target.value }))} />
+            <button className="login-submit-button" disabled={saving}>Opret bane</button>
+          </form>
+        </aside>
+        <div className="tgt-course-db-main">
+          {!selectedCourse ? <div className="status-box">Vælg en bane i listen, eller opret en ny.</div> : <>
+            <div className="tgt-course-title"><p className="eyebrow">Valgt bane</p><h3>{selectedCourse.club_name}</h3><span>{selectedCourse.course_name}</span></div>
+            <form onSubmit={createTee} className="tgt-course-form tgt-tee-form">
+              <h3>Tilføj tee</h3>
+              <input className="form-input" placeholder="Tee-navn, fx 58" value={newTee.teeName} onChange={(event) => setNewTee((current) => ({ ...current, teeName: event.target.value }))} />
+              <input className="form-input" inputMode="decimal" placeholder="Course Rating" value={newTee.courseRating} onChange={(event) => setNewTee((current) => ({ ...current, courseRating: event.target.value }))} />
+              <input className="form-input" inputMode="numeric" placeholder="Slope Rating" value={newTee.slopeRating} onChange={(event) => setNewTee((current) => ({ ...current, slopeRating: event.target.value }))} />
+              <input className="form-input" inputMode="numeric" placeholder="Samlet længde i meter" value={newTee.totalLength} onChange={(event) => setNewTee((current) => ({ ...current, totalLength: event.target.value }))} />
+              <button className="login-submit-button" disabled={saving}>Gem tee</button>
+            </form>
+            <div className="tgt-tee-grid">{tees.map((tee) => <article key={tee.id}><span>TEE</span><strong>{tee.tee_name}</strong><small>CR {tee.course_rating ?? "–"} · Slope {tee.slope_rating ?? "–"}</small><small>{tee.total_length_meters ? `${tee.total_length_meters} m` : "Længde mangler"}</small></article>)}</div>
+            <section className="tgt-hole-editor">
+              <div className="tgt-hole-editor-head"><div><p className="eyebrow">Scorekort</p><h3>Par og stroke index</h3></div><button type="button" className="login-cancel-button" onClick={prepare18Holes}>Klargør 18 huller</button></div>
+              <div className="tgt-hole-grid">{holes.map((hole, index) => <label key={hole.id ?? hole.hole_number}><span>Hul {hole.hole_number}</span><input type="number" min="3" max="6" value={hole.par} onChange={(event) => setHoles((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, par: event.target.value } : item))} /><small>Par</small><input type="number" min="1" max="18" value={hole.stroke_index} onChange={(event) => setHoles((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stroke_index: event.target.value } : item))} /><small>Index</small></label>)}</div>
+              {holes.length > 0 && <button type="button" className="login-submit-button" onClick={saveHoles} disabled={saving}>Gem huldata</button>}
+            </section>
+          </>}
+          <section className="tgt-csv-import">
+            <p className="eyebrow">Masseimport</p><h3>Importér baner fra CSV</h3>
+            <p className="description">Kolonner: club_name, course_name, hole_number, par, stroke_index, tee_name, length_meters, course_rating, slope_rating, total_length_meters.</p>
+            <input type="file" accept=".csv,text/csv" onChange={handleCsvFile} />
+            {csvRows.length > 0 && <button type="button" className="login-submit-button" onClick={importCsv} disabled={saving}>Importér {csvRows.length} rækker</button>}
+          </section>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AdminClosestToPin({ session, onLogout }) {
   const [roundId, setRoundId] = useState(null);
   const [roundLocks, setRoundLocks] = useState([]);
@@ -4484,7 +5439,18 @@ function AdminClosestToPin({ session, onLogout }) {
   }
 
   return (
-    <main className="marker-page">
+    <main className="marker-page tgt-ops-shell">
+      <style>{`
+        .tgt-ops-shell{min-height:100vh;padding:clamp(18px,4vw,46px) 14px;background:radial-gradient(circle at 12% 4%,rgba(211,170,82,.15),transparent 27%),radial-gradient(circle at 90% 12%,rgba(21,105,73,.20),transparent 30%),linear-gradient(155deg,#031f17 0%,#073727 48%,#0a4935 100%)}
+        .tgt-ops-shell>.marker-card{width:min(1180px,100%);margin:0 auto;overflow:hidden;border:1px solid rgba(240,207,130,.42);border-radius:24px;background:#f7f4ec;box-shadow:0 28px 80px rgba(0,0,0,.28)}
+        .tgt-ops-shell .marker-header{align-items:center;padding:clamp(22px,4vw,36px);color:#f5dc93;background:radial-gradient(circle at 92% 0%,rgba(240,207,130,.18),transparent 34%),linear-gradient(135deg,#04251b,#0a4935);border-bottom:1px solid rgba(240,207,130,.35)}
+        .tgt-ops-shell .marker-header h1{margin:5px 0 7px;color:#f5dc93;font-family:Georgia,serif;font-size:clamp(27px,4vw,42px);line-height:1.05}.tgt-ops-shell .marker-header .eyebrow{color:#c9aa60}.tgt-ops-shell .marker-header .description{color:rgba(255,241,190,.72)}
+        .tgt-ops-shell .logout-button{min-height:44px;padding:10px 16px;border:1px solid rgba(240,207,130,.48);border-radius:999px;color:#f5dc93;background:rgba(2,27,20,.52);font-weight:900}
+        .tgt-ops-shell .login-submit-button{border-color:#b7822e;color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935);box-shadow:0 8px 20px rgba(3,31,23,.15)}
+        .tgt-ops-shell input,.tgt-ops-shell select,.tgt-ops-shell textarea{border-color:rgba(24,72,52,.22)!important;background:#fffdf8!important}.tgt-ops-shell input:focus,.tgt-ops-shell select:focus,.tgt-ops-shell textarea:focus{outline:2px solid rgba(199,154,66,.34);border-color:#b7822e!important}
+        @media(max-width:700px){.tgt-ops-shell{padding:8px}.tgt-ops-shell>.marker-card{border-radius:16px}.tgt-ops-shell .marker-header{align-items:flex-start;flex-direction:column;padding:22px 18px}.tgt-ops-shell .marker-header>div:last-child,.tgt-ops-shell .marker-header .logout-button{width:100%}.tgt-ops-shell .marker-header>div:last-child{display:grid!important;grid-template-columns:1fr 1fr}.tgt-ops-shell .flight-information{grid-template-columns:repeat(2,minmax(0,1fr))}.tgt-ops-shell table{min-width:620px}.tgt-ops-shell .table-wrapper{overflow-x:auto;-webkit-overflow-scrolling:touch}.tgt-ops-shell button{min-height:44px}}
+      `}</style>
+
       <section className="marker-card">
         <div className="marker-header">
           <div>
@@ -4516,7 +5482,7 @@ function AdminClosestToPin({ session, onLogout }) {
         )}
 
         {!loading && (
-          <div style={{ padding: 22 }}>
+          <div className="tgt-admin-polish" style={{ padding: 22 }}>
             <nav
               aria-label="Administrationssæson"
               style={{
@@ -4573,6 +5539,7 @@ function AdminClosestToPin({ session, onLogout }) {
                   ["rounds", "Runder"],
                   ["participants", "Deltagere"],
                   ["flights", "Bolde"],
+                  ["courses", "Banedatabase"],
                 ].map(([value, label]) => (
                   <button
                     type="button"
@@ -4607,13 +5574,14 @@ function AdminClosestToPin({ session, onLogout }) {
                     Runde 6 og Runde 7 bruger nu samme sikre flow som 2027:
                     deltagere, bolde, markørlogin, publicering og livescoring.
                   </p>
-                  <div className="flight-information" style={{ marginTop: 18 }}>
-                    <div><span>Runde 6</span><strong>Holdfinale og individuel runde</strong></div>
-                    <div><span>Runde 7</span><strong>Individuel finale</strong></div>
-                    <div><span>Flow</span><strong>Draft → Ready → Live</strong></div>
+                  <div className="tgt-final-flow-grid">
+                    <div className="tgt-final-flow-card"><span>Runde 6</span><strong>Holdfinale og individuel runde</strong></div>
+                    <div className="tgt-final-flow-card"><span>Runde 7</span><strong>Individuel finale</strong></div>
+                    <div className="tgt-final-flow-card"><span>Arbejdsgang</span><strong>Draft → Ready → Live</strong></div>
                   </div>
                 </section>
 
+                <SeasonRoundsAdmin season={2026} />
                 <RoundParticipantsAdmin season={2026} />
                 <FlightAdmin season={2026} />
 
@@ -5042,6 +6010,9 @@ function AdminClosestToPin({ session, onLogout }) {
                 {season2027 && admin2027Tab === "flights" && (
                   <FlightAdmin season={2027} />
                 )}
+                {admin2027Tab === "courses" && (
+                  <CourseDatabaseAdmin />
+                )}
               </>
             )}
 
@@ -5159,6 +6130,7 @@ function MarkerDashboard({
     useState([]);
   const [damebajere, setDamebajere] = useState([]);
   const [savingDamebajerId, setSavingDamebajerId] = useState(null);
+  const [markerTee, setMarkerTee] = useState(null);
 
   const [selectedHole, setSelectedHole] = useState(1);
   const [draftScores, setDraftScores] = useState({});
@@ -5274,6 +6246,8 @@ function MarkerDashboard({
               name,
               played_at,
               course_id,
+              tee_id,
+              tee_name,
               locked_at,
               locked_by
             )
@@ -5337,6 +6311,16 @@ function MarkerDashboard({
       }
 
       setAssignment(flight);
+      setMarkerTee(null);
+      if (flight.rounds?.tee_id) {
+        const { data: teeData, error: teeError } = await supabase
+          .from("course_tees")
+          .select("id, tee_name, course_rating, slope_rating")
+          .eq("id", flight.rounds.tee_id)
+          .maybeSingle();
+        if (teeError) throw teeError;
+        setMarkerTee(teeData ?? null);
+      }
       setSelectedHole(1);
       setSaveMessage("");
       setSaveError("");
@@ -5701,7 +6685,21 @@ function MarkerDashboard({
   ).length;
 
   return (
-    <main className="marker-page">
+    <main className="marker-page tgt-ops-shell">
+      <style>{`
+        .tgt-marker-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:22px;background:#f4f0e6}.tgt-marker-kpi{min-height:118px;padding:18px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;border:1px solid rgba(236,201,115,.48);border-radius:18px;background:linear-gradient(145deg,#052a1f,#0a4935);box-shadow:0 12px 28px rgba(3,31,23,.14)}.tgt-marker-kpi span{color:#cdb46d;font-size:10px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}.tgt-marker-kpi strong{color:#f7df99;font-family:Georgia,serif;font-size:clamp(21px,2.2vw,27px);line-height:1.18}.tgt-marker-progress{grid-column:1/-1;min-height:100px}@media(max-width:700px){.tgt-marker-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}.tgt-marker-kpi{min-height:100px;padding:14px 9px;gap:12px}.tgt-marker-kpi strong{font-size:19px}.tgt-marker-progress{grid-column:1/-1}}@media(max-width:390px){.tgt-marker-kpis{grid-template-columns:1fr}.tgt-marker-progress{grid-column:auto}}
+      `}</style>
+      <style>{`
+        .tgt-ops-shell{min-height:100vh;padding:clamp(18px,4vw,46px) 14px;background:radial-gradient(circle at 12% 4%,rgba(211,170,82,.15),transparent 27%),radial-gradient(circle at 90% 12%,rgba(21,105,73,.20),transparent 30%),linear-gradient(155deg,#031f17 0%,#073727 48%,#0a4935 100%)}
+        .tgt-ops-shell>.marker-card{width:min(1180px,100%);margin:0 auto;overflow:hidden;border:1px solid rgba(240,207,130,.42);border-radius:24px;background:#f7f4ec;box-shadow:0 28px 80px rgba(0,0,0,.28)}
+        .tgt-ops-shell .marker-header{align-items:center;padding:clamp(22px,4vw,36px);color:#f5dc93;background:radial-gradient(circle at 92% 0%,rgba(240,207,130,.18),transparent 34%),linear-gradient(135deg,#04251b,#0a4935);border-bottom:1px solid rgba(240,207,130,.35)}
+        .tgt-ops-shell .marker-header h1{margin:5px 0 7px;color:#f5dc93;font-family:Georgia,serif;font-size:clamp(27px,4vw,42px);line-height:1.05}.tgt-ops-shell .marker-header .eyebrow{color:#c9aa60}.tgt-ops-shell .marker-header .description{color:rgba(255,241,190,.72)}
+        .tgt-ops-shell .logout-button{min-height:44px;padding:10px 16px;border:1px solid rgba(240,207,130,.48);border-radius:999px;color:#f5dc93;background:rgba(2,27,20,.52);font-weight:900}
+        .tgt-ops-shell .login-submit-button{border-color:#b7822e;color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935);box-shadow:0 8px 20px rgba(3,31,23,.15)}
+        .tgt-ops-shell input,.tgt-ops-shell select,.tgt-ops-shell textarea{border-color:rgba(24,72,52,.22)!important;background:#fffdf8!important}.tgt-ops-shell input:focus,.tgt-ops-shell select:focus,.tgt-ops-shell textarea:focus{outline:2px solid rgba(199,154,66,.34);border-color:#b7822e!important}
+        @media(max-width:700px){.tgt-ops-shell{padding:8px}.tgt-ops-shell>.marker-card{border-radius:16px}.tgt-ops-shell .marker-header{align-items:flex-start;flex-direction:column;padding:22px 18px}.tgt-ops-shell .marker-header>div:last-child,.tgt-ops-shell .marker-header .logout-button{width:100%}.tgt-ops-shell .marker-header>div:last-child{display:grid!important;grid-template-columns:1fr 1fr}.tgt-ops-shell .flight-information{grid-template-columns:repeat(2,minmax(0,1fr))}.tgt-ops-shell table{min-width:620px}.tgt-ops-shell .table-wrapper{overflow-x:auto;-webkit-overflow-scrolling:touch}.tgt-ops-shell button{min-height:44px}}
+      `}</style>
+
       <section className="marker-card">
         <div className="marker-header">
           <div>
@@ -5829,46 +6827,12 @@ function MarkerDashboard({
           !assignmentError &&
           assignment && (
             <>
-              <div className="flight-information">
-                <div>
-                  <span>Runde</span>
-
-                  <strong>
-                    {
-                      assignment.rounds
-                        ?.round_number
-                    }
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Dato</span>
-
-                  <strong>
-                    {formatDate(
-                      assignment.rounds
-                        ?.played_at
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Starttid</span>
-
-                  <strong>
-                    {formatTime(
-                      assignment.tee_time
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Gemt</span>
-
-                  <strong>
-                    {completedHoles} / 18 huller
-                  </strong>
-                </div>
+              <div className="tgt-marker-kpis">
+                <div className="tgt-marker-kpi"><span>Dato</span><strong>{formatDate(assignment.rounds?.played_at)}</strong></div>
+                <div className="tgt-marker-kpi"><span>Runde</span><strong>{assignment.rounds?.round_number}</strong></div>
+                <div className="tgt-marker-kpi"><span>Starttid</span><strong>{formatTime(assignment.tee_time)}</strong></div>
+                <div className="tgt-marker-kpi"><span>Tee</span><strong>{markerTee?.tee_name ?? assignment.rounds?.tee_name ?? "Ikke valgt"}</strong></div>
+                <div className="tgt-marker-kpi tgt-marker-progress"><span>Huller gemt</span><strong>{completedHoles} / 18 huller</strong></div>
               </div>
 
               {assignment.rounds?.locked_at && (
@@ -5973,6 +6937,17 @@ function MarkerDashboard({
                   {players.map((player) => {
                     const scoreKey =
                       `${player.id}-${selectedHole}`;
+                    const coursePar = holes.reduce((total, hole) => total + Number(hole.par ?? 0), 0);
+                    const playingHandicap = calculatePlayingHandicap(
+                      player.handicap,
+                      markerTee?.slope_rating,
+                      markerTee?.course_rating,
+                      coursePar
+                    );
+                    const allocatedStrokes = getAllocatedStrokes(
+                      playingHandicap,
+                      selectedHoleData?.stroke_index
+                    );
 
                     return (
                       <label
@@ -6018,9 +6993,9 @@ function MarkerDashboard({
                               color: "#78827d",
                             }}
                           >
-                            Handicap:{" "}
-                            {player.handicap ??
-                              "Ikke angivet"}
+                            HCP {player.handicap ?? "–"}
+                            {playingHandicap !== null && ` · SPH ${playingHandicap}`}
+                            {` · Slag på hullet ${allocatedStrokes}`}
                           </small>
                         </span>
 
@@ -6053,6 +7028,12 @@ function MarkerDashboard({
                             fontWeight: 800,
                           }}
                         />
+
+                        <div className="tgt-net-preview">
+                          <span><small>SLAG</small><strong>{"●".repeat(allocatedStrokes) || "–"}</strong></span>
+                          <span><small>NETTO</small><strong>{draftScores[scoreKey] === "" || draftScores[scoreKey] === undefined ? "–" : Number(draftScores[scoreKey]) - allocatedStrokes}</strong></span>
+                          <span><small>RESULTAT</small><strong>{draftScores[scoreKey] === "" || draftScores[scoreKey] === undefined ? "–" : formatScore(Number(draftScores[scoreKey]) - allocatedStrokes - Number(selectedHoleData?.par ?? 0))}</strong></span>
+                        </div>
 
                         <button
                           type="button"

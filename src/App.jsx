@@ -108,30 +108,34 @@ function getAllocatedStrokes(playingHandicap, strokeIndex) {
   if (!Number.isFinite(handicap) || !Number.isFinite(index) || handicap <= 0) return 0;
   return Math.floor((handicap - 1) / 18) + (index <= ((handicap - 1) % 18) + 1 ? 1 : 0);
 }
-function getPlayerPlayingHandicap(player) {
-  const candidates = [
+function getPlayerPlayingHandicap(player, roundData = null) {
+  const directCandidates = [
     player?.playingHandicap,
     player?.playing_handicap,
     player?.courseHandicap,
     player?.course_handicap,
     player?.sph,
   ];
-  const directValue = candidates.find(
-    (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))
+  const directValue = directCandidates.find(
+    (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) && Number(value) !== 0
   );
   if (directValue !== undefined) return Number(directValue);
 
-  const scorecard = player?.scorecard ?? [];
-  const hasStrokeAllocation = scorecard.some(
-    (hole) => hole?.strokesReceived !== null && hole?.strokesReceived !== undefined
+  const handicapIndex = player?.handicapIndex ?? player?.handicap ?? player?.handicap_index;
+  const slopeRating = player?.slopeRating ?? player?.slope_rating ?? roundData?.tee?.slope_rating ?? roundData?.courseTee?.slope_rating ?? roundData?.course_tee?.slope_rating ?? roundData?.slopeRating ?? roundData?.slope_rating;
+  const courseRating = player?.courseRating ?? player?.course_rating ?? roundData?.tee?.course_rating ?? roundData?.courseTee?.course_rating ?? roundData?.course_tee?.course_rating ?? roundData?.courseRating ?? roundData?.course_rating;
+  const coursePar = (player?.scorecard ?? []).reduce(
+    (total, hole) => total + (Number(hole?.par) || 0),
+    0
   );
-  if (hasStrokeAllocation) {
-    return scorecard.reduce(
-      (total, hole) => total + (Number(hole?.strokesReceived) || 0),
-      0
-    );
-  }
-  return null;
+  const calculated = calculatePlayingHandicap(handicapIndex, slopeRating, courseRating, coursePar);
+  if (calculated !== null) return calculated;
+
+  const allocatedStrokes = (player?.scorecard ?? []).reduce(
+    (total, hole) => total + (Number(hole?.strokesReceived) || 0),
+    0
+  );
+  return allocatedStrokes > 0 ? allocatedStrokes : null;
 }
 
 function formatDate(date) {
@@ -2225,7 +2229,7 @@ function Leaderboard({ onOpenLogin }) {
                         <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
                         <span className="tgt-live-mobile-name">
                           <strong>{player.playerName}</strong>
-                          <small>HCP {player.handicap ?? "–"} · SPH {getPlayerPlayingHandicap(player) ?? "–"}</small>
+                          <small>HCP {player.handicap ?? "–"} · SPH {getPlayerPlayingHandicap(player, liveData?.round) ?? "–"}</small>
                         </span>
                         <strong className="tgt-live-mobile-score">
                           {player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}
@@ -2237,7 +2241,7 @@ function Leaderboard({ onOpenLogin }) {
                           <SplitScorecard
                             scorecard={player.scorecard ?? []}
                             handicapIndex={player.handicapIndex ?? player.handicap}
-                            playingHandicap={getPlayerPlayingHandicap(player)}
+                            playingHandicap={getPlayerPlayingHandicap(player, liveData?.round)}
                             position={index + 1}
                           />
                         </div>
@@ -2277,7 +2281,7 @@ function Leaderboard({ onOpenLogin }) {
                           </td>
                           <td>
                             <span className="player-name">{player.playerName}</span>
-                            <small className="tgt-live-player-meta">HCP {player.handicap ?? "–"} · SPH {getPlayerPlayingHandicap(player) ?? "–"}</small>
+                            <small className="tgt-live-player-meta">HCP {player.handicap ?? "–"} · SPH {getPlayerPlayingHandicap(player, liveData?.round) ?? "–"}</small>
                           </td>
                           <td className="number-column tgt-live-gross-score">{player.holesPlayed === 0 ? "–" : player.grossStrokes}</td>
                           <td className="number-column final-score tgt-live-to-par">{player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}</td>
@@ -2289,7 +2293,7 @@ function Leaderboard({ onOpenLogin }) {
                             <td colSpan="6" style={{ padding: 0 }}>
                               <div className="tgt-live-scorecard-detail">
                                 <strong>{player.playerName} · scorekort efter {player.holesPlayed} huller</strong>
-                                <SplitScorecard scorecard={player.scorecard ?? []} handicapIndex={player.handicapIndex ?? player.handicap} playingHandicap={getPlayerPlayingHandicap(player)} position={index + 1} />
+                                <SplitScorecard scorecard={player.scorecard ?? []} handicapIndex={player.handicapIndex ?? player.handicap} playingHandicap={getPlayerPlayingHandicap(player, liveData?.round)} position={index + 1} />
                               </div>
                             </td>
                           </tr>

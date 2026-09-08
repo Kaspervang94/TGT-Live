@@ -1958,6 +1958,5 @@ body.tgt-menu-open {
 
 /* Etape 7: Udfoldeligt best ball-scorekort i hold-live */
 .tgt-team-best-ball-detail { padding: 18px; background: linear-gradient(145deg,#041f17,#083e2d); border-top: 1px solid rgba(240,207,130,.55); border-bottom: 1px solid rgba(240,207,130,.55); }
-.tgt-team-best-ball-detail > strong { display: block; margin-bottom: 13px; color: #f5dc93; font-family: Georgia,serif; }
 .tgt-live-team-leaderboard tr.is-open > td { border-bottom-color: #c99a42 !important; }
-@media(max-width:768px) { .tgt-team-best-ball-detail { padding: 13px 7px 18px; } .tgt-team-best-ball-detail > strong { padding-inline: 6px; font-size: 14px; } }
+@media(max-width:768px) { .tgt-team-best-ball-detail { padding: 13px 7px 18px; } }

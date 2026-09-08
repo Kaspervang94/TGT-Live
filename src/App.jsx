@@ -866,8 +866,8 @@ function Leaderboard({ onOpenLogin }) {
         "Bruttoscoren vises i forhold til par og opdateres automatisk, når markørerne gemmer et hul.",
     },
     team: {
-      eyebrow: "Best Ball med handicap",
-      title: "Holdfinale",
+      eyebrow: "Holdturnering",
+      title: "Aktuel stilling",
       description:
         "100 % spillehandicap. På hvert hul tæller holdets bedste nettoscore. Hullet tæller først, når begge holdspillere har afleveret score.",
     },
@@ -2271,7 +2271,6 @@ function Leaderboard({ onOpenLogin }) {
                           <tr>
                             <td colSpan="4" style={{ padding: 0 }}>
                               <div className="tgt-live-scorecard-detail tgt-team-best-ball-detail">
-                                <strong>{team.teamName ?? team.name} · best ball efter {team.holesPlayed ?? team.thru ?? 0} huller</strong>
                                 <SplitScorecard scorecard={team.scorecard ?? []} position={index + 1} />
                               </div>
                             </td>

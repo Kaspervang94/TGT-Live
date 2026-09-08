@@ -347,6 +347,8 @@ function Leaderboard({ onOpenLogin }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [individualFullscreen, setIndividualFullscreen] = useState(false);
   const [teamFullscreen, setTeamFullscreen] = useState(false);
+  const [liveFullscreen, setLiveFullscreen] = useState(false);
+  const [liveView, setLiveView] = useState("individual");
   const [standings, setStandings] = useState([]);
   const [liveData, setLiveData] = useState(null);
   const [teamData, setTeamData] = useState(null);
@@ -781,14 +783,31 @@ function Leaderboard({ onOpenLogin }) {
     setSelectedTeamId(null);
   }
 
+  function openLiveFullscreen(defaultView = "individual") {
+    setMainTab("individual");
+    setTab("live");
+    setLiveView(defaultView);
+    setLiveFullscreen(true);
+    setMenuOpen(false);
+    setSelectedPlayer(null);
+    setSelectedPlayerMode(null);
+  }
+
+  function closeLiveFullscreen() {
+    setLiveFullscreen(false);
+    setLiveView("individual");
+    setSelectedPlayer(null);
+    setSelectedPlayerMode(null);
+  }
+
   useEffect(() => {
-    if (!individualFullscreen && !teamFullscreen) return undefined;
+    if (!individualFullscreen && !teamFullscreen && !liveFullscreen) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [individualFullscreen, teamFullscreen]);
+  }, [individualFullscreen, teamFullscreen, liveFullscreen]);
 
   const headings = {
     season: {
@@ -845,7 +864,7 @@ function Leaderboard({ onOpenLogin }) {
   const currentHeading = headings[tab];
 
   return (
-    <div className={`app tgt-public-shell${individualFullscreen ? " tgt-individual-fullscreen-open" : ""}${teamFullscreen ? " tgt-team-fullscreen-open" : ""}`}>
+    <div className={`app tgt-public-shell${individualFullscreen ? " tgt-individual-fullscreen-open" : ""}${teamFullscreen ? " tgt-team-fullscreen-open" : ""}${liveFullscreen ? " tgt-live-fullscreen-open" : ""}`}>
       <style>{`
         .tgt-public-shell { background: #f3efe6; min-height: 100vh; }
         .tgt-public-topbar { position: relative; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: 14px clamp(18px, 4vw, 54px); background: rgba(7, 43, 31, .96); color: #fff; backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.12); }
@@ -1603,7 +1622,7 @@ function Leaderboard({ onOpenLogin }) {
               <button type="button" onClick={() => openPublicView("individual", "season")}>Leaderboard</button>
               <button type="button" onClick={() => openPublicView("individual", "rounds")}>Runder</button>
               <button type="button" onClick={() => openPublicView("individual", "profiles")}>Spillerprofiler</button>
-              <button type="button" onClick={() => openPublicView("individual", "live")}>Live leaderboard</button>
+              <button type="button" onClick={() => openLiveFullscreen("individual")}>Live leaderboard</button>
               <button type="button" onClick={() => openPublicView("team", "team")}>Holdturneringen</button>
               <button type="button" onClick={() => openPublicView("individual", "final")}>Finalestillingen</button>
               <button type="button" onClick={() => openPublicView("individual", "closest")}>Tættest på pinden</button>
@@ -1636,7 +1655,7 @@ function Leaderboard({ onOpenLogin }) {
             <button
               type="button"
               className="tgt-primary-action"
-              onClick={() => openPublicView("individual", "live")}
+              onClick={() => openLiveFullscreen("individual")}
             >
               Følg live
             </button>
@@ -1658,7 +1677,7 @@ function Leaderboard({ onOpenLogin }) {
         </div>
       </section>
 
-      <main className={`main-content${individualFullscreen ? " tgt-individual-fullscreen" : ""}${teamFullscreen ? " tgt-team-fullscreen" : ""}`}>
+      <main className={`main-content${individualFullscreen ? " tgt-individual-fullscreen" : ""}${teamFullscreen ? " tgt-team-fullscreen" : ""}${liveFullscreen ? " tgt-live-fullscreen" : ""}`}>
         {individualFullscreen && (
           <header className="tgt-individual-fullscreen-header">
             <button
@@ -1682,6 +1701,22 @@ function Leaderboard({ onOpenLogin }) {
             </button>
             <strong>Holdleaderboard</strong>
             <span className="tgt-team-header-balance" aria-hidden="true" />
+          </header>
+        )}
+        {liveFullscreen && (
+          <header className="tgt-live-fullscreen-header">
+            <div className="tgt-live-fullscreen-topline">
+              <button type="button" className="tgt-live-back-button" onClick={closeLiveFullscreen} aria-label="Tilbage til start">
+                <span aria-hidden="true">‹</span>
+                Tilbage
+              </button>
+              <strong>Live score</strong>
+              <span className="tgt-live-header-balance" aria-hidden="true" />
+            </div>
+            <nav className="tgt-live-view-toggle" aria-label="Vælg livestilling">
+              <button type="button" className={liveView === "individual" ? "active" : ""} onClick={() => setLiveView("individual")}>Individuel</button>
+              <button type="button" className={liveView === "team" ? "active" : ""} onClick={() => setLiveView("team")}>Hold</button>
+            </nav>
           </header>
         )}
         <section className="leaderboard-card">
@@ -2032,7 +2067,7 @@ function Leaderboard({ onOpenLogin }) {
             </div>
           )}
 
-          {!loading && !errorMessage && tab === "live" && (
+          {!loading && !errorMessage && tab === "live" && (!liveFullscreen || liveView === "individual") && (
             <div className="table-wrapper tgt-live-gamebook">
               <div className="tgt-live-mobile-list">
                 <div className="tgt-live-mobile-head">
@@ -2139,6 +2174,41 @@ function Leaderboard({ onOpenLogin }) {
             </div>
           )}
 
+          {!loading && !errorMessage && tab === "live" && liveFullscreen && liveView === "team" && (
+            <div className="table-wrapper tgt-live-team-leaderboard">
+              <table>
+                <thead>
+                  <tr>
+                    <th className="position-column">#</th>
+                    <th>Hold</th>
+                    <th className="number-column">Score</th>
+                    <th className="number-column">Thru</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teamLeaderboard.map((team, index) => (
+                    <tr key={team.teamId ?? team.id ?? `${team.teamName}-${index}`}>
+                      <td className="position-column">
+                        <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
+                      </td>
+                      <td>
+                        <span className="player-name">{team.teamName ?? team.name ?? "Ukendt hold"}</span>
+                      </td>
+                      <td className="number-column final-score">
+                        {formatScore(team.scoreToPar ?? team.score ?? team.bestBallScore ?? 0)}
+                      </td>
+                      <td className="number-column">
+                        {team.holesPlayed ?? team.thru ?? 0}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {teamLeaderboard.length === 0 && (
+                <div className="status-box">Der er endnu ingen live holdscore for den valgte runde.</div>
+              )}
+            </div>
+          )}
           {!loading && !errorMessage && tab === "team" && (
             <div className="table-wrapper tgt-team-leaderboard">
               <table>
@@ -2440,7 +2510,7 @@ function Leaderboard({ onOpenLogin }) {
         <button type="button" className={tab === "season" ? "active" : ""} onClick={() => openPublicView("individual", "season")}>
           <span aria-hidden="true">◆</span><small>Leaderboard</small>
         </button>
-        <button type="button" className={tab === "live" ? "active" : ""} onClick={() => openPublicView("individual", "live")}>
+        <button type="button" className={tab === "live" ? "active" : ""} onClick={() => openLiveFullscreen("individual")}>
           <span aria-hidden="true">●</span><small>Live</small>
         </button>
         <button type="button" className={tab === "rounds" ? "active" : ""} onClick={() => openPublicView("individual", "rounds")}>

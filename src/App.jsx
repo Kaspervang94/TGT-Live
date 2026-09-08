@@ -5361,6 +5361,9 @@ function AdminClosestToPin({ session, onLogout }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [adminSeasonTab, setAdminSeasonTab] = useState("2026");
   const [adminSection, setAdminSection] = useState("overview");
+  const [regularSeasonPreview, setRegularSeasonPreview] = useState([]);
+  const [regularSeasonArchive, setRegularSeasonArchive] = useState([]);
+  const [finalizingRegularSeason, setFinalizingRegularSeason] = useState(false);
 
   const loadAdminData = useCallback(async () => {
     setLoading(true);
@@ -5477,6 +5480,60 @@ function AdminClosestToPin({ session, onLogout }) {
   useEffect(() => {
     loadAdminData();
   }, [loadAdminData]);
+  useEffect(() => {
+    if (adminSeasonTab !== "2026" || adminSection !== "finals") return;
+    loadRegularSeasonFinaleCenter().catch((error) => {
+      console.error("Finalecenter kunne ikke hentes:", error);
+      setErrorMessage(error.message ?? "Finalecenter kunne ikke hentes.");
+    });
+  }, [adminSeasonTab, adminSection]);
+
+  async function loadRegularSeasonFinaleCenter() {
+    const [previewResult, archiveResult] = await Promise.all([
+      supabase
+        .from("season_individual_standings")
+        .select("player_id, player_name, counting_rounds, counting_score, halved_score")
+        .eq("season", 2026)
+        .order("halved_score", { ascending: true }),
+      supabase
+        .from("season_regular_standings")
+        .select("player_id, player_name, counting_score, halved_score, finalized_at")
+        .eq("season", 2026)
+        .order("position", { ascending: true }),
+    ]);
+    if (previewResult.error) throw previewResult.error;
+    if (archiveResult.error && archiveResult.error.code !== "42P01") throw archiveResult.error;
+    setRegularSeasonPreview(previewResult.data ?? []);
+    setRegularSeasonArchive(archiveResult.data ?? []);
+  }
+
+  async function handleFinalizeRegularSeason() {
+    const unqualified = regularSeasonPreview.filter((player) => Number(player.counting_rounds) < 4);
+    if (unqualified.length > 0) {
+      setErrorMessage(`${unqualified.length} spiller(e) mangler fire tællende runder.`);
+      return;
+    }
+    const confirmed = window.confirm(
+      "Vil du afslutte grundspillet i TGT 2026? De fire bedste scorer gemmes, og den samlede score halveres som udgangspunkt til finalen."
+    );
+    if (!confirmed) return;
+    setFinalizingRegularSeason(true);
+    setMessage("");
+    setErrorMessage("");
+    try {
+      const { data, error } = await supabase.rpc("finalize_regular_season", {
+        requested_season: 2026,
+      });
+      if (error) throw error;
+      setMessage(`Grundspillet er afsluttet. ${data ?? regularSeasonPreview.length} spilleres finaleudgangspunkt er gemt.`);
+      await loadRegularSeasonFinaleCenter();
+    } catch (error) {
+      console.error("Fejl ved afslutning af grundspillet:", error);
+      setErrorMessage(error.message ?? "Grundspillet kunne ikke afsluttes.");
+    } finally {
+      setFinalizingRegularSeason(false);
+    }
+  }
 
   async function handleRoundLock(roundData) {
     const isLocked = Boolean(roundData.locked_at);
@@ -5846,7 +5903,7 @@ function AdminClosestToPin({ session, onLogout }) {
                   ["participants", "Deltagere"],
                   ["flights", "Bolde"],
                   ["courses", "Banedatabase"],
-                  ...(adminSeasonTab === "2026" ? [["finals", "Finalestyring"]] : []),
+                  ...(adminSeasonTab === "2026" ? [["finals", "Finalecenter"]] : []),
                 ].map(([value, label]) => (
                   <button
                     type="button"
@@ -5866,6 +5923,36 @@ function AdminClosestToPin({ session, onLogout }) {
             )}
             {adminSeasonTab === "2026" && adminSection === "finals" && (
               <>
+                <section style={{ padding: 20, border: "1px solid rgba(199,154,66,.42)", borderRadius: 16, background: "linear-gradient(135deg, #fffaf0, #ffffff)", marginBottom: 24 }}>
+                  <p className="eyebrow">Trin 1 · Grundspil</p>
+                  <h2 style={{ marginTop: 0 }}>Afslut grundspillet</h2>
+                  <p className="description">Systemet tager hver spillers fire bedste rundescores, lægger dem sammen og halverer summen. Det halverede resultat gemmes som spillerens udgangspunkt til finalen.</p>
+                  <div className="flight-information" style={{ marginTop: 18 }}>
+                    <div><span>Spillere</span><strong>{regularSeasonPreview.length}</strong></div>
+                    <div><span>Klar med 4 runder</span><strong>{regularSeasonPreview.filter((player) => Number(player.counting_rounds) === 4).length}</strong></div>
+                    <div><span>Status</span><strong>{regularSeasonArchive.length > 0 ? "Afsluttet" : "Åben"}</strong></div>
+                    <div><span>Finalegrundlag</span><strong>{regularSeasonArchive.length > 0 ? `${regularSeasonArchive.length} gemt` : "Ikke gemt"}</strong></div>
+                  </div>
+                  <div className="table-wrapper" style={{ marginTop: 16 }}>
+                    <table>
+                      <thead><tr><th>#</th><th>Spiller</th><th className="number-column">4 bedste</th><th className="number-column">Halveret</th><th>Status</th></tr></thead>
+                      <tbody>
+                        {(regularSeasonArchive.length > 0 ? regularSeasonArchive : regularSeasonPreview).map((player, index) => (
+                          <tr key={player.player_id}>
+                            <td>{index + 1}</td><td><span className="player-name">{player.player_name}</span></td>
+                            <td className="number-column">{formatScore(player.counting_score)}</td>
+                            <td className="number-column final-score">{formatScore(player.halved_score)}</td>
+                            <td>{regularSeasonArchive.length > 0 ? "Gemt" : Number(player.counting_rounds) === 4 ? "Klar" : `${player.counting_rounds ?? 0}/4`}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button type="button" onClick={handleFinalizeRegularSeason} disabled={finalizingRegularSeason || regularSeasonArchive.length > 0 || regularSeasonPreview.length === 0 || regularSeasonPreview.some((player) => Number(player.counting_rounds) < 4)} className="login-submit-button" style={{ maxWidth: 420, marginTop: 18 }}>
+                    {finalizingRegularSeason ? "Afslutter grundspillet..." : regularSeasonArchive.length > 0 ? "Grundspillet er afsluttet" : "Afslut grundspillet og gem finaleudgangspunkt"}
+                  </button>
+                </section>
+
                 <section
                   style={{
                     padding: 20,
@@ -5875,8 +5962,8 @@ function AdminClosestToPin({ session, onLogout }) {
                     marginBottom: 24,
                   }}
                 >
-                  <p className="eyebrow">Finaleafvikling 2026</p>
-                  <h2 style={{ marginTop: 0 }}>Klargør og start finalerunderne</h2>
+                  <p className="eyebrow">Finalecenter 2026</p>
+                  <h2 style={{ marginTop: 0 }}>Afslut grundspillet og klargør finalen</h2>
                   <p className="description">
                     Runde 6 og Runde 7 bruger nu samme sikre flow som 2027:
                     deltagere, bolde, markørlogin, publicering og livescoring.

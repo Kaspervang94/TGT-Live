@@ -5481,10 +5481,10 @@ function AdminClosestToPin({ session, onLogout }) {
     loadAdminData();
   }, [loadAdminData]);
   useEffect(() => {
-    if (adminSeasonTab !== "2026" || adminSection !== "finals") return;
+    if (adminSection !== "season_center") return;
     loadRegularSeasonFinaleCenter().catch((error) => {
-      console.error("Finalecenter kunne ikke hentes:", error);
-      setErrorMessage(error.message ?? "Finalecenter kunne ikke hentes.");
+      console.error("Sæsoncenter kunne ikke hentes:", error);
+      setErrorMessage(error.message ?? "Sæsoncenter kunne ikke hentes.");
     });
   }, [adminSeasonTab, adminSection]);
 
@@ -5493,12 +5493,12 @@ function AdminClosestToPin({ session, onLogout }) {
       supabase
         .from("season_individual_standings")
         .select("player_id, player_name, counting_rounds, counting_score, halved_score")
-        .eq("season", 2026)
+        .eq("season", Number(adminSeasonTab))
         .order("halved_score", { ascending: true }),
       supabase
         .from("season_regular_standings")
         .select("player_id, player_name, counting_score, halved_score, finalized_at")
-        .eq("season", 2026)
+        .eq("season", Number(adminSeasonTab))
         .order("position", { ascending: true }),
     ]);
     if (previewResult.error) throw previewResult.error;
@@ -5514,7 +5514,7 @@ function AdminClosestToPin({ session, onLogout }) {
       return;
     }
     const confirmed = window.confirm(
-      "Vil du afslutte grundspillet i TGT 2026? De fire bedste scorer gemmes, og den samlede score halveres som udgangspunkt til finalen."
+      "Vil du afslutte grundspillet i TGT ${adminSeasonTab}? De fire bedste scorer gemmes, og den samlede score halveres som udgangspunkt til finalen."
     );
     if (!confirmed) return;
     setFinalizingRegularSeason(true);
@@ -5522,7 +5522,7 @@ function AdminClosestToPin({ session, onLogout }) {
     setErrorMessage("");
     try {
       const { data, error } = await supabase.rpc("finalize_regular_season", {
-        requested_season: 2026,
+        requested_season: Number(adminSeasonTab),
       });
       if (error) throw error;
       setMessage(`Grundspillet er afsluttet. ${data ?? regularSeasonPreview.length} spilleres finaleudgangspunkt er gemt.`);
@@ -5903,7 +5903,7 @@ function AdminClosestToPin({ session, onLogout }) {
                   ["participants", "Deltagere"],
                   ["flights", "Bolde"],
                   ["courses", "Banedatabase"],
-                  ...(adminSeasonTab === "2026" ? [["finals", "Finalecenter"]] : []),
+                  ["season_center", "Sæsoncenter"],
                 ].map(([value, label]) => (
                   <button
                     type="button"
@@ -5921,7 +5921,7 @@ function AdminClosestToPin({ session, onLogout }) {
                 ))}
               </nav>
             )}
-            {adminSeasonTab === "2026" && adminSection === "finals" && (
+            {adminSection === "season_center" && (
               <>
                 <section style={{ padding: 20, border: "1px solid rgba(199,154,66,.42)", borderRadius: 16, background: "linear-gradient(135deg, #fffaf0, #ffffff)", marginBottom: 24 }}>
                   <p className="eyebrow">Trin 1 · Grundspil</p>
@@ -5953,6 +5953,19 @@ function AdminClosestToPin({ session, onLogout }) {
                   </button>
                 </section>
 
+                {adminSeasonTab === "2027" && (
+                  <section style={{ padding: 20, border: "1px solid #d8e4db", borderRadius: 16, background: "#eef7f0", marginBottom: 24 }}>
+                    <p className="eyebrow">Sæsoncenter · TGT 2027</p>
+                    <h2 style={{ marginTop: 0 }}>Grundspil og finale</h2>
+                    <p className="description">Sæsoncenteret følger samme model som 2026. Når alle spillere har fire tællende runder, kan grundspillet afsluttes og det halverede finaleudgangspunkt gemmes ovenfor.</p>
+                    <div className="tgt-final-flow-grid">
+                      <div className="tgt-final-flow-card"><span>Trin 1</span><strong>Afslut grundspillet</strong></div>
+                      <div className="tgt-final-flow-card"><span>Trin 2</span><strong>Opret finalerunder under Runder</strong></div>
+                      <div className="tgt-final-flow-card"><span>Trin 3</span><strong>Afslut sæsonen og arkivér mestrene</strong></div>
+                    </div>
+                  </section>
+                )}
+                {adminSeasonTab === "2026" && <>
                 <section
                   style={{
                     padding: 20,
@@ -5962,8 +5975,8 @@ function AdminClosestToPin({ session, onLogout }) {
                     marginBottom: 24,
                   }}
                 >
-                  <p className="eyebrow">Finalecenter 2026</p>
-                  <h2 style={{ marginTop: 0 }}>Afslut grundspillet og klargør finalen</h2>
+                  <p className="eyebrow">Sæsoncenter · TGT {adminSeasonTab}</p>
+                  <h2 style={{ marginTop: 0 }}>Afslut grundspillet og klargør sæsonfinalen</h2>
                   <p className="description">
                     Runde 6 og Runde 7 bruger nu samme sikre flow som 2027:
                     deltagere, bolde, markørlogin, publicering og livescoring.
@@ -6322,6 +6335,7 @@ function AdminClosestToPin({ session, onLogout }) {
               )}
             </section>
 
+                </>}
               </>
             )}
 

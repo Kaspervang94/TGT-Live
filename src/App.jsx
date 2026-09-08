@@ -1,5 +1,5 @@
 import "./App.css";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "./lib/supabase";
 import {
   getRoundScores,
@@ -69,6 +69,32 @@ const LUBKER_FINAL_COURSES = [
     tees: [["Gold · Herre",76.3,147,6476],["Sort · Herre",74.5,142,6103],["White · Herre",72.8,139,5770],["Yellow · Herre",71.1,136,5415],["Red · Herre",68.0,132,4841],["Gold · Dame",83.5,154,6476],["Sort · Dame",81.3,149,6103],["White · Dame",79.3,145,5770],["Yellow · Dame",77.1,140,5415],["Red · Dame",73.6,133,4841]] },
 ];
 
+function usePositionChanges(entries = [], getId = (entry) => entry?.id) {
+  const previousPositionsRef = useRef(new Map());
+  const [changes, setChanges] = useState({});
+  const signature = entries.map((entry) => String(getId(entry) ?? "")).join("|");
+  useEffect(() => {
+    const previous = previousPositionsRef.current;
+    const next = new Map();
+    const nextChanges = {};
+    entries.forEach((entry, index) => {
+      const id = String(getId(entry) ?? "");
+      if (!id) return;
+      next.set(id, index + 1);
+      const previousPosition = previous.get(id);
+      nextChanges[id] = previousPosition ? previousPosition - (index + 1) : 0;
+    });
+    previousPositionsRef.current = next;
+    setChanges(nextChanges);
+  }, [signature]);
+  return changes;
+}
+function PositionMovement({ value = 0 }) {
+  const movement = Number(value) || 0;
+  if (movement > 0) return <span className="tgt-position-movement up" title={`Steget ${movement} placering${movement === 1 ? "" : "er"}`}>▲{movement}</span>;
+  if (movement < 0) return <span className="tgt-position-movement down" title={`Faldet ${Math.abs(movement)} placering${Math.abs(movement) === 1 ? "" : "er"}`}>▼{Math.abs(movement)}</span>;
+  return <span className="tgt-position-movement same" title="Uændret placering">●</span>;
+}
 function formatScore(score) {
   if (score === null || score === undefined) {
     return "Afventer";
@@ -878,17 +904,23 @@ function Leaderboard({ onOpenLogin }) {
             : a.teamName.localeCompare(b.teamName, "da")
         )
     : historicalTeamStandings;
+  const cumulativeIndividualMovements = usePositionChanges(cumulativeStandings, (player) => player.player_id);
+  const cumulativeTeamMovements = usePositionChanges(cumulativeTeamStandings, (team) => team.teamId);
+  const roundIndividualMovements = usePositionChanges(liveLeaderboard, (player) => player.playerId);
+  const roundTeamMovements = usePositionChanges(teamLeaderboard, (team) => team.teamId ?? team.id);
   const publicIndividualTopFive = cumulativeStandings.slice(0, 5).map((player) => ({
     id: player.player_id,
     name: player.player_name,
     score: player.counting_score,
     holesPlayed: player.live_holes ?? 0,
+    movement: cumulativeIndividualMovements[String(player.player_id)] ?? 0,
   }));
   const publicTeamTopFive = cumulativeTeamStandings.slice(0, 5).map((team) => ({
     id: team.teamId,
     name: team.teamName,
     score: teamLiveCumulativeActive ? team.cumulativeScore : team.halvedScore,
     holesPlayed: team.liveHoles ?? 0,
+    movement: cumulativeTeamMovements[String(team.teamId)] ?? 0,
   }));
   function PublicLiveTopFive({ type }) {
     const isTeam = type === "team";
@@ -904,6 +936,7 @@ function Leaderboard({ onOpenLogin }) {
           {entries.map((entry, index) => (
             <div className="tgt-public-live-top-five-row" key={entry.id ?? `${entry.name}-${index}`}>
               <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
+              <PositionMovement value={entry.movement} />
               <strong>{entry.name}</strong>
               <span>{formatScore(entry.score)}</span>
               <small>{entry.holesPlayed}/18</small>
@@ -1382,12 +1415,16 @@ function Leaderboard({ onOpenLogin }) {
           .tgt-team-rounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .tgt-team-final-kpi { align-items: flex-start; flex-direction: column; }
         }
+        .tgt-position-movement { display:inline-flex; align-items:center; justify-content:center; min-width:28px; font-size:10px; font-weight:900; line-height:1; }
+        .tgt-position-movement.up { color:#16834a; }
+        .tgt-position-movement.down { color:#b43b32; }
+        .tgt-position-movement.same { color:#9aa59f; font-size:7px; }
         .tgt-public-live-top-five { position: sticky; top: 0; z-index: 24; width: min(760px, calc(100% - 24px)); margin: 12px auto; overflow: hidden; border: 1px solid rgba(240,207,130,.48); border-radius: 18px; background: #fffdf8; box-shadow: 0 14px 34px rgba(18,48,36,.15); }
         .tgt-public-live-top-five > header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 11px 14px; color: #f7df99; background: linear-gradient(135deg,#04251b,#0a4935); }
         .tgt-public-live-top-five > header strong { font-size: 12px; letter-spacing: .08em; }
         .tgt-public-live-top-five > header small { color: #cdb46d; font-size: 9px; font-weight: 900; }
         .tgt-public-live-top-five-list { padding: 5px 10px; }
-        .tgt-public-live-top-five-row { display: grid; grid-template-columns: 34px minmax(0,1fr) 48px 44px; align-items: center; gap: 9px; min-height: 40px; border-bottom: 1px solid #e7ece8; }
+        .tgt-public-live-top-five-row { display: grid; grid-template-columns: 34px 30px minmax(0,1fr) 48px 44px; align-items: center; gap: 9px; min-height: 40px; border-bottom: 1px solid #e7ece8; }
         .tgt-public-live-top-five-row:last-child { border-bottom: 0; }
         .tgt-public-live-top-five-row .position-badge { width: 26px; height: 26px; min-width: 26px; font-size: 11px; }
         .tgt-public-live-top-five-row > strong { overflow: hidden; color: #173d2e; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
@@ -2439,6 +2476,7 @@ function Leaderboard({ onOpenLogin }) {
                         }}
                       >
                         <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
+                        <PositionMovement value={roundIndividualMovements[String(player.playerId)] ?? 0} />
                         <span className="tgt-live-mobile-name">
                           <strong>{player.playerName}</strong>
                           <small>HCP {player.handicap ?? "–"} · SPH {getPlayerPlayingHandicap(player, liveData?.round) ?? "–"}</small>
@@ -2490,6 +2528,7 @@ function Leaderboard({ onOpenLogin }) {
                         >
                           <td className="position-column">
                             <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
+                            <PositionMovement value={roundIndividualMovements[String(player.playerId)] ?? 0} />
                           </td>
                           <td>
                             <span className="player-name">{player.playerName}</span>
@@ -2546,7 +2585,7 @@ function Leaderboard({ onOpenLogin }) {
                     return (
                       <Fragment key={teamKey}>
                         <tr className={isOpen ? "is-open" : ""} onClick={() => setSelectedTeamId(isOpen ? null : teamKey)} style={{ cursor: "pointer" }}>
-                          <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span></td>
+                          <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span><PositionMovement value={roundTeamMovements[String(team.teamId ?? team.id)] ?? 0} /></td>
                           <td><span className="player-name">{team.teamName ?? team.name ?? "Ukendt hold"}</span><small className="tgt-live-player-meta">Tryk for best ball-scorekort</small></td>
                           <td className="number-column final-score tgt-live-to-par" style={getLeaderboardScoreStyle(teamScoreToPar ?? 0)}>{teamHolesPlayed === 0 ? "E" : formatScore(teamScoreToPar)}</td>
                           <td className="number-column tgt-live-thru">{teamHolesPlayed}</td>
@@ -7606,7 +7645,11 @@ function MarkerDashboard({
 
   const markerIndividualLeaderboard = markerLiveData?.leaderboard ?? [];
   const markerTeamLeaderboard = markerTeamData?.leaderboard ?? [];
-  function MarkerTopFiveCard({ title, entries }) {
+  const markerIndividualMovements = usePositionChanges(markerIndividualTopFive, (entry) => entry.id);
+  const markerTeamMovements = usePositionChanges(markerTeamTopFive, (entry) => entry.id);
+  const markerRoundIndividualMovements = usePositionChanges(markerIndividualLeaderboard, (entry) => entry.playerId);
+  const markerRoundTeamMovements = usePositionChanges(markerTeamLeaderboard, (entry) => entry.teamId ?? entry.id);
+  function MarkerTopFiveCard({ title, entries, movements }) {
     return (
       <section className="tgt-marker-top-five-card">
         <header><span className="live-dot" /><strong>{title}</strong><small>TOP 5</small></header>
@@ -7614,6 +7657,7 @@ function MarkerDashboard({
           {entries.map((entry, index) => (
             <div className="tgt-marker-top-five-row" key={entry.id ?? `${entry.name}-${index}`}>
               <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
+              <PositionMovement value={movements[String(entry.id)] ?? 0} />
               <strong>{entry.name}</strong>
               <span>{formatScore(entry.score)}</span>
               <small>{entry.holesPlayed ?? 0}/18</small>
@@ -7643,7 +7687,7 @@ function MarkerDashboard({
   return (
     <main className="marker-page tgt-ops-shell">
       <style>{`
-        .tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{position:-webkit-sticky;position:sticky;top:max(0px,env(safe-area-inset-top));z-index:60;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;padding:10px 12px;background:rgba(243,239,230,.94);backdrop-filter:blur(12px);border-bottom:1px solid rgba(25,65,48,.14);box-shadow:0 12px 28px rgba(18,48,36,.12)}.tgt-marker-top-five-card{overflow:hidden;border:1px solid rgba(240,207,130,.46);border-radius:16px;background:#fffdf8;box-shadow:0 8px 22px rgba(3,31,23,.10)}.tgt-marker-top-five-card>header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:10px 12px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-top-five-card>header strong{font-size:12px;letter-spacing:.08em}.tgt-marker-top-five-card>header small{color:#cdb46d;font-size:9px;font-weight:900}.tgt-marker-top-five-card>div{padding:5px 9px}.tgt-marker-top-five-row{display:grid;grid-template-columns:32px minmax(0,1fr) 45px 42px;align-items:center;gap:8px;min-height:38px;border-bottom:1px solid #e7ece8}.tgt-marker-top-five-row:last-child{border-bottom:0}.tgt-marker-top-five-row .position-badge{width:25px;height:25px;min-width:25px;font-size:11px}.tgt-marker-top-five-row>strong{overflow:hidden;color:#173d2e;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.tgt-marker-top-five-row>span:nth-last-child(2){color:#a57525;font-weight:900;text-align:right}.tgt-marker-top-five-row>small{color:#78827d;font-size:10px;font-weight:800;text-align:right}.tgt-marker-top-five-card p{margin:8px;color:#78827d;text-align:center}@media(max-width:600px){.tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{grid-template-columns:1fr;padding:7px;top:env(safe-area-inset-top);transform:translateZ(0);will-change:transform}.tgt-marker-top-five-card>header{padding:8px 10px}.tgt-marker-top-five-card>div{padding:3px 8px}.tgt-marker-top-five-row{min-height:34px}.tgt-marker-top-five-row>strong{font-size:12px}}
+        .tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{position:-webkit-sticky;position:sticky;top:max(0px,env(safe-area-inset-top));z-index:60;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;padding:10px 12px;background:rgba(243,239,230,.94);backdrop-filter:blur(12px);border-bottom:1px solid rgba(25,65,48,.14);box-shadow:0 12px 28px rgba(18,48,36,.12)}.tgt-marker-top-five-card{overflow:hidden;border:1px solid rgba(240,207,130,.46);border-radius:16px;background:#fffdf8;box-shadow:0 8px 22px rgba(3,31,23,.10)}.tgt-marker-top-five-card>header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:10px 12px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-top-five-card>header strong{font-size:12px;letter-spacing:.08em}.tgt-marker-top-five-card>header small{color:#cdb46d;font-size:9px;font-weight:900}.tgt-marker-top-five-card>div{padding:5px 9px}.tgt-marker-top-five-row{display:grid;grid-template-columns:32px 28px minmax(0,1fr) 45px 42px;align-items:center;gap:8px;min-height:38px;border-bottom:1px solid #e7ece8}.tgt-marker-top-five-row:last-child{border-bottom:0}.tgt-marker-top-five-row .position-badge{width:25px;height:25px;min-width:25px;font-size:11px}.tgt-marker-top-five-row>strong{overflow:hidden;color:#173d2e;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.tgt-marker-top-five-row>span:nth-last-child(2){color:#a57525;font-weight:900;text-align:right}.tgt-marker-top-five-row>small{color:#78827d;font-size:10px;font-weight:800;text-align:right}.tgt-marker-top-five-card p{margin:8px;color:#78827d;text-align:center}@media(max-width:600px){.tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{grid-template-columns:1fr;padding:7px;top:env(safe-area-inset-top);transform:translateZ(0);will-change:transform}.tgt-marker-top-five-card>header{padding:8px 10px}.tgt-marker-top-five-card>div{padding:3px 8px}.tgt-marker-top-five-row{min-height:34px}.tgt-marker-top-five-row>strong{font-size:12px}}
         .tgt-marker-live-panel{position:fixed;inset:0;z-index:1000;overflow:auto;padding:0 0 40px;background:#f3efe6}.tgt-marker-live-header{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;min-height:68px;padding:10px 18px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935);border-bottom:1px solid rgba(240,207,130,.35)}.tgt-marker-live-header strong{text-align:center;font-size:20px}.tgt-marker-live-back,.tgt-marker-live-refresh{min-height:42px;padding:0 14px;border:1px solid rgba(240,207,130,.45);border-radius:999px;color:#f7df99;background:rgba(2,27,20,.48);font-weight:900;cursor:pointer}.tgt-marker-live-back{justify-self:start}.tgt-marker-live-refresh{justify-self:end}.tgt-marker-live-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:720px;margin:20px auto 12px;padding:8px;border-radius:16px;background:#e4eade}.tgt-marker-live-toggle button{min-height:46px;border:0;border-radius:12px;color:#244539;background:transparent;font-weight:900;cursor:pointer}.tgt-marker-live-toggle button.active{color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935)}.tgt-marker-live-table{width:min(960px,calc(100% - 24px));margin:0 auto;border-radius:18px;background:#fff;box-shadow:0 18px 50px rgba(18,48,36,.14)}.tgt-marker-live-table table{width:100%;border-collapse:collapse}.tgt-marker-live-table thead{color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-live-table th{padding:15px 12px;color:#f7df99!important;border-bottom:1px solid rgba(240,207,130,.28);font-size:11px;letter-spacing:.1em;text-transform:uppercase}.tgt-marker-live-table td{padding:15px 12px;border-bottom:1px solid #e5ebe6;background:#fffdf8}.tgt-marker-live-table .player-name{color:#103d2d;font-weight:900}@media(max-width:600px){.tgt-marker-live-header{grid-template-columns:auto 1fr auto;padding:10px}.tgt-marker-live-header strong{font-size:17px}.tgt-marker-live-back,.tgt-marker-live-refresh{padding:0 10px}.tgt-marker-live-toggle{margin:12px}.tgt-marker-live-table{width:calc(100% - 12px)}.tgt-marker-live-table table{min-width:0!important}.tgt-marker-live-table th,.tgt-marker-live-table td{padding:13px 8px}.tgt-marker-live-table .player-name{font-size:14px}}
         .tgt-marker-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:22px;background:#f4f0e6}.tgt-marker-kpi{min-height:118px;padding:18px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;border:1px solid rgba(236,201,115,.48);border-radius:18px;background:linear-gradient(145deg,#052a1f,#0a4935);box-shadow:0 12px 28px rgba(3,31,23,.14)}.tgt-marker-kpi span{color:#cdb46d;font-size:10px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}.tgt-marker-kpi strong{color:#f7df99;font-family:Georgia,serif;font-size:clamp(21px,2.2vw,27px);line-height:1.18}.tgt-marker-progress{grid-column:1/-1;min-height:100px}@media(max-width:700px){.tgt-marker-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}.tgt-marker-kpi{min-height:100px;padding:14px 9px;gap:12px}.tgt-marker-kpi strong{font-size:19px}.tgt-marker-progress{grid-column:1/-1}}@media(max-width:390px){.tgt-marker-kpis{grid-template-columns:1fr}.tgt-marker-progress{grid-column:auto}}
       `}</style>
@@ -7715,10 +7759,10 @@ function MarkerDashboard({
         {assignment && assignment.rounds?.live_leaderboard_mode !== "none" && (
           <aside className="tgt-marker-top-five-wrap" aria-label="Samlet live leaderboard top 5">
             {["individual", "both"].includes(assignment.rounds.live_leaderboard_mode) && (
-              <MarkerTopFiveCard title="INDIVIDUEL LIVE" entries={markerIndividualTopFive} />
+              <MarkerTopFiveCard title="INDIVIDUEL LIVE" entries={markerIndividualTopFive} movements={markerIndividualMovements} />
             )}
             {["team", "both"].includes(assignment.rounds.live_leaderboard_mode) && (
-              <MarkerTopFiveCard title="HOLD LIVE" entries={markerTeamTopFive} />
+              <MarkerTopFiveCard title="HOLD LIVE" entries={markerTeamTopFive} movements={markerTeamMovements} />
             )}
           </aside>
         )}
@@ -7757,7 +7801,7 @@ function MarkerDashboard({
                         : entry.holesPlayed ?? entry.thru ?? 0;
                       return (
                         <tr key={entry.playerId ?? entry.teamId ?? entry.id ?? index}>
-                          <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span></td>
+                          <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span><PositionMovement value={isIndividual ? (markerRoundIndividualMovements[String(entry.playerId)] ?? 0) : (markerRoundTeamMovements[String(entry.teamId ?? entry.id)] ?? 0)} /></td>
                           <td><span className="player-name">{isIndividual ? entry.playerName : entry.teamName ?? entry.name ?? "Ukendt hold"}</span></td>
                           <td className="number-column tgt-live-to-par" style={getLeaderboardScoreStyle(holesPlayed === 0 ? 0 : score)}>{holesPlayed === 0 ? "E" : formatScore(score)}</td>
                           <td className="number-column tgt-live-thru">{holesPlayed}</td>

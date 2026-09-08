@@ -345,6 +345,7 @@ function Leaderboard({ onOpenLogin }) {
   const [profileSearch, setProfileSearch] = useState("");
   const [directoryPlayerId, setDirectoryPlayerId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [individualFullscreen, setIndividualFullscreen] = useState(false);
   const [standings, setStandings] = useState([]);
   const [liveData, setLiveData] = useState(null);
   const [teamData, setTeamData] = useState(null);
@@ -754,6 +755,28 @@ function Leaderboard({ onOpenLogin }) {
     setMenuOpen(false);
   }
 
+  function openIndividualFullscreen() {
+    setMainTab("individual");
+    setTab("season");
+    setIndividualFullscreen(true);
+    setMenuOpen(false);
+  }
+
+  function closeIndividualFullscreen() {
+    setIndividualFullscreen(false);
+    setSelectedPlayer(null);
+    setSelectedPlayerMode(null);
+  }
+
+  useEffect(() => {
+    if (!individualFullscreen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [individualFullscreen]);
+
   const headings = {
     season: {
       eyebrow: "Individuel turnering",
@@ -809,7 +832,7 @@ function Leaderboard({ onOpenLogin }) {
   const currentHeading = headings[tab];
 
   return (
-    <div className="app tgt-public-shell">
+    <div className={`app tgt-public-shell${individualFullscreen ? " tgt-individual-fullscreen-open" : ""}`}>
       <style>{`
         .tgt-public-shell { background: #f3efe6; min-height: 100vh; }
         .tgt-public-topbar { position: relative; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: 14px clamp(18px, 4vw, 54px); background: rgba(7, 43, 31, .96); color: #fff; backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.12); }
@@ -1622,7 +1645,22 @@ function Leaderboard({ onOpenLogin }) {
         </div>
       </section>
 
-      <main className="main-content">
+      <main className={`main-content${individualFullscreen ? " tgt-individual-fullscreen" : ""}`}>
+        {individualFullscreen && (
+          <header className="tgt-individual-fullscreen-header">
+            <button
+              type="button"
+              className="tgt-individual-back-button"
+              onClick={closeIndividualFullscreen}
+              aria-label="Tilbage til start"
+            >
+              <span aria-hidden="true">‹</span>
+              Tilbage
+            </button>
+            <strong>Individuelt leaderboard</strong>
+            <span className="tgt-individual-header-balance" aria-hidden="true" />
+          </header>
+        )}
         <section className="leaderboard-card">
           <nav
             aria-label="Hovednavigation"
@@ -1646,10 +1684,7 @@ function Leaderboard({ onOpenLogin }) {
           >
             <button
               type="button"
-              onClick={() => {
-                setMainTab("individual");
-                setTab("season");
-              }}
+              onClick={openIndividualFullscreen}
               className={
                 mainTab === "individual"
                   ? "login-submit-button"

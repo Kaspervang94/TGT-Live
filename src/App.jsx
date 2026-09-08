@@ -696,6 +696,33 @@ function Leaderboard({ onOpenLogin }) {
     (hole) => Number(hole.par) === 3
   );
 
+  async function openRoundClosest(round) {
+    if (!round?.id) return;
+
+    setLoading(true);
+    setErrorMessage("");
+    setSelectedPlayer(null);
+    setSelectedPlayerMode(null);
+
+    try {
+      const [roundLeaderboard, roundClosestEntries] = await Promise.all([
+        getLiveRoundLeaderboard({ season: selectedSeason, roundId: round.id }),
+        getClosestToPinEntries(round.id),
+      ]);
+      setSelectedPublicRoundId(round.id);
+      setLiveData(roundLeaderboard);
+      setClosestEntries(roundClosestEntries ?? []);
+      setMainTab("individual");
+      setTab("closest");
+      setPanelFullscreen("closest");
+    } catch (error) {
+      console.error("Tættest på pinden kunne ikke åbnes:", error);
+      setErrorMessage(error.message ?? "Tættest på pinden kunne ikke åbnes.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function openRound(round) {
     if (!round?.id) return;
 
@@ -1640,7 +1667,6 @@ function Leaderboard({ onOpenLogin }) {
               <button type="button" onClick={() => openPanelFullscreen("profiles")}>Spillerprofiler</button>
               <button type="button" onClick={() => openLiveFullscreen("individual")}>Live leaderboard</button>
               <button type="button" onClick={() => openPublicView("team", "team")}>Holdturneringen</button>
-              <button type="button" onClick={() => openPanelFullscreen("closest")}>Tættest på pinden</button>
               <button type="button" onClick={() => openPublicView("individual", "hall")}>Hall of Fame</button>
               <div style={{ padding: "14px 16px 6px", color: "#d7b469", fontWeight: 900, letterSpacing: ".08em" }}>VÆLG SÆSON</div>
               {[2027, 2026].map((season) => (
@@ -1703,9 +1729,8 @@ function Leaderboard({ onOpenLogin }) {
             <button type="button" onClick={openIndividualFullscreen}><span>◆</span><strong>Individuel</strong><small>Sæsonens leaderboard</small></button>
             <button type="button" onClick={openTeamFullscreen}><span>◇</span><strong>Hold</strong><small>Holdleaderboard</small></button>
             <button type="button" onClick={() => openLiveFullscreen("individual")}><span>●</span><strong>Live score</strong><small>Individuel og hold</small></button>
-            <button type="button" onClick={() => openPanelFullscreen("rounds")}><span>▦</span><strong>Runder</strong><small>Startlister og resultater</small></button>
+            <button type="button" onClick={() => openPanelFullscreen("rounds")}><span>▦</span><strong>Runder</strong><small>Overblik, live og konkurrencer</small></button>
             <button type="button" onClick={() => openPanelFullscreen("profiles")}><span>◎</span><strong>Spillere</strong><small>Profiler og statistik</small></button>
-            <button type="button" onClick={() => openPanelFullscreen("closest")}><span>⌖</span><strong>Tættest på</strong><small>Par 3-konkurrencen</small></button>
             <button type="button" onClick={() => openPanelFullscreen("hall")} className="tgt-lobby-hall"><span>🏆</span><strong>Hall of Fame</strong><small>TGT-mestrene</small></button>
           </div>
         </section>
@@ -1952,7 +1977,10 @@ function Leaderboard({ onOpenLogin }) {
                       <h3 style={{ margin: "4px 0" }}>{round.name}</h3>
                       <span style={{ color: "#718078" }}>{round.played_at ? formatDate(round.played_at) : "Dato følger"} · {round.courses?.club_name ?? "Bane følger"}</span>
                     </div>
-                    <button type="button" onClick={() => openRound(round)} className="login-submit-button" style={{ width: "auto", marginTop: 0 }}>{statusLabel}</button>
+                    <div className="tgt-round-actions">
+                      <button type="button" onClick={() => openRound(round)} className="login-submit-button" style={{ width: "auto", marginTop: 0 }}>{statusLabel}</button>
+                      <button type="button" onClick={() => openRoundClosest(round)} className="login-cancel-button" style={{ width: "auto", marginTop: 0 }}>Tættest på pinden</button>
+                    </div>
                   </article>
                 );
               })}

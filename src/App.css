@@ -1935,3 +1935,22 @@ body.tgt-menu-open {
 .tgt-panel-fullscreen > .leaderboard-card > .tgt-tabs {
   display: none !important;
 }
+
+
+/* Etape 6: Rundecenter med Tættest på pinden */
+.tgt-round-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+@media (max-width: 768px) {
+  .tgt-round-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .tgt-round-actions button {
+    width: 100% !important;
+  }
+}

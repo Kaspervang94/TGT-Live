@@ -345,7 +345,6 @@ function Leaderboard({ onOpenLogin }) {
   const [profileSearch, setProfileSearch] = useState("");
   const [directoryPlayerId, setDirectoryPlayerId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [fullScreenView, setFullScreenView] = useState(null);
   const [standings, setStandings] = useState([]);
   const [liveData, setLiveData] = useState(null);
   const [teamData, setTeamData] = useState(null);
@@ -709,7 +708,6 @@ function Leaderboard({ onOpenLogin }) {
       setLiveData(roundLeaderboard);
       setMainTab("individual");
       setTab("live");
-      setFullScreenView("live");
     } catch (error) {
       console.error("Runden kunne ikke åbnes:", error);
       setErrorMessage(error.message ?? "Runden kunne ikke åbnes.");
@@ -722,7 +720,9 @@ function Leaderboard({ onOpenLogin }) {
     if (!menuOpen) return undefined;
 
     function closeOnEscape(event) {
-      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
     }
 
     const previousOverflow = document.body.style.overflow;
@@ -753,29 +753,6 @@ function Leaderboard({ onOpenLogin }) {
     setTab(nextTab);
     setMenuOpen(false);
   }
-
-  function openFullScreenView(view, nextMainTab, nextTab) {
-    setMainTab(nextMainTab);
-    setTab(nextTab);
-    setFullScreenView(view);
-    setMenuOpen(false);
-  }
-
-  function closeFullScreenView() {
-    setFullScreenView(null);
-    setMainTab("individual");
-    setTab("season");
-    window.requestAnimationFrame(() =>
-      window.scrollTo({ top: 0, behavior: "smooth" })
-    );
-  }
-
-  const fullScreenTitles = {
-    individual: "Individuelt leaderboard",
-    team: "Holdleaderboard",
-    rounds: "Runder",
-    live: "Live score",
-  };
 
   const headings = {
     season: {
@@ -1587,11 +1564,11 @@ function Leaderboard({ onOpenLogin }) {
               </button>
             </div>
             <nav className="tgt-drawer-nav">
-              <button type="button" onClick={() => openFullScreenView("individual", "individual", "season")}>Leaderboard</button>
-              <button type="button" onClick={() => openFullScreenView("rounds", "individual", "rounds")}>Runder</button>
+              <button type="button" onClick={() => openPublicView("individual", "season")}>Leaderboard</button>
+              <button type="button" onClick={() => openPublicView("individual", "rounds")}>Runder</button>
               <button type="button" onClick={() => openPublicView("individual", "profiles")}>Spillerprofiler</button>
-              <button type="button" onClick={() => openFullScreenView("live", "individual", "live")}>Live leaderboard</button>
-              <button type="button" onClick={() => openFullScreenView("team", "team", "team")}>Holdturneringen</button>
+              <button type="button" onClick={() => openPublicView("individual", "live")}>Live leaderboard</button>
+              <button type="button" onClick={() => openPublicView("team", "team")}>Holdturneringen</button>
               <button type="button" onClick={() => openPublicView("individual", "final")}>Finalestillingen</button>
               <button type="button" onClick={() => openPublicView("individual", "closest")}>Tættest på pinden</button>
               <button type="button" onClick={() => openPublicView("individual", "hall")}>Hall of Fame</button>
@@ -1645,23 +1622,14 @@ function Leaderboard({ onOpenLogin }) {
         </div>
       </section>
 
-      <main className={`main-content${fullScreenView ? " tgt-fullscreen-active" : ""}`}>
-        {fullScreenView && (
-          <header className="tgt-fullscreen-header">
-            <button type="button" className="tgt-fullscreen-back" onClick={closeFullScreenView} aria-label="Tilbage til start">
-              <span aria-hidden="true">‹</span> Tilbage
-            </button>
-            <strong>{fullScreenTitles[fullScreenView]}</strong>
-            <span className="tgt-fullscreen-header-spacer" aria-hidden="true" />
-          </header>
-        )}
+      <main className="main-content">
         <section className="leaderboard-card">
           <nav
             aria-label="Hovednavigation"
             style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, width: "100%", padding: 10, margin: "0 auto", background: "#082f23" }}
           >
-            <button type="button" onClick={() => { setMainTab("individual"); setTab("season"); setFullScreenView(null); }} className={tab !== "rounds" ? "login-submit-button" : "login-cancel-button"} style={{ marginTop: 0 }}>LEADERBOARD</button>
-            <button type="button" onClick={() => openFullScreenView("rounds", "individual", "rounds")} className={tab === "rounds" ? "login-submit-button" : "login-cancel-button"} style={{ marginTop: 0 }}>RUNDER</button>
+            <button type="button" onClick={() => { setMainTab("individual"); setTab("season"); }} className={tab !== "rounds" ? "login-submit-button" : "login-cancel-button"} style={{ marginTop: 0 }}>LEADERBOARD</button>
+            <button type="button" onClick={() => setTab("rounds")} className={tab === "rounds" ? "login-submit-button" : "login-cancel-button"} style={{ marginTop: 0 }}>RUNDER</button>
           </nav>
 
           {tab !== "rounds" && tab !== "hall" && (
@@ -1678,9 +1646,10 @@ function Leaderboard({ onOpenLogin }) {
           >
             <button
               type="button"
-              onClick={() =>
-                openFullScreenView("individual", "individual", "season")
-              }
+              onClick={() => {
+                setMainTab("individual");
+                setTab("season");
+              }}
               className={
                 mainTab === "individual"
                   ? "login-submit-button"
@@ -1692,9 +1661,10 @@ function Leaderboard({ onOpenLogin }) {
             </button>
             <button
               type="button"
-              onClick={() =>
-                openFullScreenView("team", "team", "team")
-              }
+              onClick={() => {
+                setMainTab("team");
+                setTab("team");
+              }}
               className={
                 mainTab === "team"
                   ? "login-submit-button"
@@ -2412,13 +2382,13 @@ function Leaderboard({ onOpenLogin }) {
         </section>
       </main>
       <nav className="tgt-mobile-bottom-nav" aria-label="Mobilnavigation">
-        <button type="button" className={tab === "season" ? "active" : ""} onClick={() => openFullScreenView("individual", "individual", "season")}>
+        <button type="button" className={tab === "season" ? "active" : ""} onClick={() => openPublicView("individual", "season")}>
           <span aria-hidden="true">◆</span><small>Leaderboard</small>
         </button>
-        <button type="button" className={tab === "live" ? "active" : ""} onClick={() => openFullScreenView("live", "individual", "live")}>
+        <button type="button" className={tab === "live" ? "active" : ""} onClick={() => openPublicView("individual", "live")}>
           <span aria-hidden="true">●</span><small>Live</small>
         </button>
-        <button type="button" className={tab === "rounds" ? "active" : ""} onClick={() => openFullScreenView("rounds", "individual", "rounds")}>
+        <button type="button" className={tab === "rounds" ? "active" : ""} onClick={() => openPublicView("individual", "rounds")}>
           <span aria-hidden="true">▦</span><small>Runder</small>
         </button>
         <button type="button" onClick={() => setMenuOpen(true)} aria-label="Åbn mere-menu">

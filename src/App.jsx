@@ -855,7 +855,7 @@ function Leaderboard({ onOpenLogin }) {
   const headings = {
     season: {
       eyebrow: "Individuel turnering",
-      title: "Aktuel sæsonstilling",
+      title: "Aktuel stilling",
       description:
         "De fire laveste rundescores tæller. Den samlede score halveres efter fire tællende runder.",
     },

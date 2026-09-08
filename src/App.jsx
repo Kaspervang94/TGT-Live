@@ -1415,10 +1415,11 @@ function Leaderboard({ onOpenLogin }) {
           .tgt-team-rounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .tgt-team-final-kpi { align-items: flex-start; flex-direction: column; }
         }
-        .tgt-position-movement { display:inline-flex; align-items:center; justify-content:center; min-width:28px; font-size:10px; font-weight:900; line-height:1; }
-        .tgt-position-movement.up { color:#16834a; }
-        .tgt-position-movement.down { color:#b43b32; }
-        .tgt-position-movement.same { color:#9aa59f; font-size:7px; }
+        .tgt-position-cell { display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
+        .tgt-position-movement { display:inline-flex; align-items:center; justify-content:center; min-width:28px; padding:3px 5px; border-radius:999px; font-size:10px; font-weight:900; line-height:1; transition:color .2s ease, background .2s ease, transform .2s ease; }
+        .tgt-position-movement.up { color:#126d3e; background:#e4f5e9; }
+        .tgt-position-movement.down { color:#9d2f29; background:#fde9e7; }
+        .tgt-position-movement.same { min-width:22px; color:#87948d; background:#eef1ef; font-size:7px; }
         .tgt-public-live-top-five { position: sticky; top: 0; z-index: 24; width: min(760px, calc(100% - 24px)); margin: 12px auto; overflow: hidden; border: 1px solid rgba(240,207,130,.48); border-radius: 18px; background: #fffdf8; box-shadow: 0 14px 34px rgba(18,48,36,.15); }
         .tgt-public-live-top-five > header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 11px 14px; color: #f7df99; background: linear-gradient(135deg,#04251b,#0a4935); }
         .tgt-public-live-top-five > header strong { font-size: 12px; letter-spacing: .08em; }
@@ -2328,10 +2329,13 @@ function Leaderboard({ onOpenLogin }) {
                           }}
                           style={{ cursor: "pointer" }}
                         >
-                          <td className="position-column">
+                          <td className="position-column tgt-position-cell">
                             <span className={`position-badge position-${index + 1}`}>
                               {index + 1}
                             </span>
+                            <PositionMovement
+                              value={cumulativeIndividualMovements[String(player.player_id)] ?? 0}
+                            />
                           </td>
                           <td><span className="player-name">{player.player_name}</span></td>
                           <td className="number-column final-score">
@@ -2526,7 +2530,7 @@ function Leaderboard({ onOpenLogin }) {
                           }}
                           style={{ cursor: "pointer" }}
                         >
-                          <td className="position-column">
+                          <td className="position-column tgt-position-cell">
                             <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
                             <PositionMovement value={roundIndividualMovements[String(player.playerId)] ?? 0} />
                           </td>
@@ -2585,7 +2589,7 @@ function Leaderboard({ onOpenLogin }) {
                     return (
                       <Fragment key={teamKey}>
                         <tr className={isOpen ? "is-open" : ""} onClick={() => setSelectedTeamId(isOpen ? null : teamKey)} style={{ cursor: "pointer" }}>
-                          <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span><PositionMovement value={roundTeamMovements[String(team.teamId ?? team.id)] ?? 0} /></td>
+                          <td className="position-column tgt-position-cell"><span className={`position-badge position-${index + 1}`}>{index + 1}</span><PositionMovement value={roundTeamMovements[String(team.teamId ?? team.id)] ?? 0} /></td>
                           <td><span className="player-name">{team.teamName ?? team.name ?? "Ukendt hold"}</span><small className="tgt-live-player-meta">Tryk for best ball-scorekort</small></td>
                           <td className="number-column final-score tgt-live-to-par" style={getLeaderboardScoreStyle(teamScoreToPar ?? 0)}>{teamHolesPlayed === 0 ? "E" : formatScore(teamScoreToPar)}</td>
                           <td className="number-column tgt-live-thru">{teamHolesPlayed}</td>
@@ -2631,10 +2635,13 @@ function Leaderboard({ onOpenLogin }) {
                           }
                           style={{ cursor: "pointer" }}
                         >
-                          <td className="position-column">
+                          <td className="position-column tgt-position-cell">
                             <span className={`position-badge position-${index + 1}`}>
                               {index + 1}
                             </span>
+                            <PositionMovement
+                              value={cumulativeTeamMovements[String(team.teamId)] ?? 0}
+                            />
                           </td>
                           <td>
                             <span className="player-name">{team.teamName}</span>
@@ -7801,7 +7808,7 @@ function MarkerDashboard({
                         : entry.holesPlayed ?? entry.thru ?? 0;
                       return (
                         <tr key={entry.playerId ?? entry.teamId ?? entry.id ?? index}>
-                          <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span><PositionMovement value={isIndividual ? (markerRoundIndividualMovements[String(entry.playerId)] ?? 0) : (markerRoundTeamMovements[String(entry.teamId ?? entry.id)] ?? 0)} /></td>
+                          <td className="position-column tgt-position-cell"><span className={`position-badge position-${index + 1}`}>{index + 1}</span><PositionMovement value={isIndividual ? (markerRoundIndividualMovements[String(entry.playerId)] ?? 0) : (markerRoundTeamMovements[String(entry.teamId ?? entry.id)] ?? 0)} /></td>
                           <td><span className="player-name">{isIndividual ? entry.playerName : entry.teamName ?? entry.name ?? "Ukendt hold"}</span></td>
                           <td className="number-column tgt-live-to-par" style={getLeaderboardScoreStyle(holesPlayed === 0 ? 0 : score)}>{holesPlayed === 0 ? "E" : formatScore(score)}</td>
                           <td className="number-column tgt-live-thru">{holesPlayed}</td>

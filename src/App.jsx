@@ -1905,6 +1905,36 @@ function Leaderboard({ onOpenLogin }) {
         .tgt-hole-editor{margin-top:14px}.tgt-hole-editor-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.tgt-hole-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:14px 0}.tgt-hole-grid label{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:10px;border-radius:12px;background:#fff;border:1px solid rgba(25,65,48,.11);text-align:center}.tgt-hole-grid label>span{grid-column:1/-1;font-weight:900;color:#174332}.tgt-hole-grid input{width:100%;min-width:0;padding:8px;border:1px solid #d8e0da;border-radius:8px;text-align:center}.tgt-hole-grid small{color:#6a7b73;font-size:9px;text-transform:uppercase}.tgt-csv-import{margin-top:14px;text-align:center}.tgt-csv-import input{display:block;margin:14px auto}.tgt-csv-import button{max-width:320px}
         @media(max-width:820px){.tgt-course-db-layout{grid-template-columns:1fr}.tgt-course-list{max-height:280px}.tgt-hole-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
         @media(max-width:520px){.tgt-course-database{padding:14px}.tgt-course-db-header{align-items:stretch;flex-direction:column;text-align:center}.tgt-course-db-count{width:100%}.tgt-tee-form{grid-template-columns:1fr}.tgt-hole-editor-head{align-items:stretch;flex-direction:column}.tgt-hole-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        /* Mobile live leaderboards: compact cards without horizontal scrolling */
+        .tgt-live-team-mobile-list{display:none}
+        @media(max-width:700px){
+          .tgt-live-gamebook,.tgt-live-team-leaderboard{overflow:visible!important;width:100%!important;margin:0!important;padding:0 6px 14px!important;background:transparent!important}
+          .tgt-live-gamebook .tgt-live-desktop-table,.tgt-live-team-leaderboard .tgt-live-team-desktop-table{display:none!important}
+          .tgt-live-gamebook .tgt-live-mobile-list,.tgt-live-team-mobile-list{display:grid!important;gap:8px;width:100%;min-width:0;padding:0}
+          .tgt-live-mobile-head,.tgt-live-team-mobile-head{display:grid!important;grid-template-columns:52px minmax(0,1fr) 58px 42px;gap:7px;align-items:center;padding:8px 10px;color:#6f7d75;font-size:9px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
+          .tgt-live-mobile-card,.tgt-live-team-mobile-card{overflow:hidden;width:100%;min-width:0;border:1px solid rgba(25,65,48,.12);border-radius:14px;background:#fffdf8;box-shadow:0 6px 18px rgba(18,48,36,.08)}
+          .tgt-live-mobile-player,.tgt-live-team-mobile-row{display:grid!important;grid-template-columns:52px minmax(0,1fr) 58px 42px!important;gap:7px!important;align-items:center;width:100%;min-width:0;min-height:64px;padding:9px 10px!important;border:0;background:transparent;color:#163c2d;text-align:left}
+          .tgt-live-mobile-player>.position-badge{grid-column:1;grid-row:1;margin-left:0}
+          .tgt-live-mobile-player>.tgt-position-movement{grid-column:1;grid-row:1;align-self:end;justify-self:end;min-width:21px;padding:2px 4px;transform:translate(4px,7px);font-size:8px}
+          .tgt-live-mobile-name,.tgt-live-team-mobile-name{display:block;min-width:0;overflow:hidden}
+          .tgt-live-mobile-name strong,.tgt-live-team-mobile-name strong{display:block;overflow:hidden;color:#103d2d;font-size:13px;line-height:1.15;text-overflow:ellipsis;white-space:nowrap}
+          .tgt-live-mobile-name small,.tgt-live-team-mobile-name small{display:block;overflow:hidden;margin-top:4px;color:#78827d;font-size:9px;text-overflow:ellipsis;white-space:nowrap}
+          .tgt-live-mobile-score,.tgt-live-team-mobile-score{font-size:16px;text-align:right}
+          .tgt-live-mobile-thru,.tgt-live-team-mobile-thru{color:#46665a;font-size:13px;text-align:right}
+          .tgt-mobile-position-stack{position:relative;display:flex;align-items:center;justify-content:flex-start;width:48px;min-height:38px}
+          .tgt-mobile-position-stack>.tgt-position-movement{position:absolute;right:-1px;bottom:-1px;min-width:21px;padding:2px 4px;font-size:8px}
+          .tgt-live-mobile-scorecard,.tgt-live-team-mobile-scorecard{overflow-x:auto;padding:8px;background:#f2f5f1;border-top:1px solid #e0e7e2;-webkit-overflow-scrolling:touch}
+          .tgt-live-mobile-scorecard .tgt-desktop-detailed-scorecard,.tgt-live-team-mobile-scorecard .tgt-desktop-detailed-scorecard{display:none!important}
+          .tgt-live-mobile-scorecard .tgt-gb-mobile-card,.tgt-live-team-mobile-scorecard .tgt-gb-mobile-card{display:block!important;min-width:560px}
+          .tgt-public-live-top-five{position:relative!important;top:auto!important;width:100%!important;margin:0 0 10px!important;border-radius:14px!important}
+          .tgt-public-live-top-five-row{grid-template-columns:28px 25px minmax(0,1fr) 40px 35px!important;gap:5px!important;min-height:35px!important;padding:0 2px}
+          .tgt-public-live-top-five-row .position-badge{width:23px!important;height:23px!important;min-width:23px!important;font-size:10px!important}
+          .tgt-public-live-top-five-row>.tgt-position-movement{min-width:22px;padding:2px 3px;font-size:8px}
+          .tgt-public-live-top-five-row>strong{font-size:11px!important}
+          .tgt-public-live-top-five-row>small{font-size:9px!important}
+          .tgt-live-fullscreen .leaderboard-card{width:100%!important;border-radius:0!important}
+          .tgt-live-fullscreen .card-header{padding:16px 12px!important}
+        }
       `}</style>
 
       <header className="tgt-public-topbar">
@@ -2587,7 +2617,32 @@ function Leaderboard({ onOpenLogin }) {
                 <PublicLiveTopFive type="team" />
               )}
               <div className="table-wrapper tgt-live-team-leaderboard">
-              <table>
+              <div className="tgt-live-team-mobile-list">
+                <div className="tgt-live-team-mobile-head">
+                  <span>#</span><span>Hold</span><span>Score</span><span>Thru</span>
+                </div>
+                {teamLeaderboard.map((team, index) => {
+                  const teamKey = team.teamId ?? team.id ?? `${team.teamName}-${index}`;
+                  const isOpen = selectedTeamId === teamKey;
+                  const teamScoreToPar = getTeamScoreToPar(team);
+                  const teamHolesPlayed = team.holesPlayed ?? team.thru ?? normalizeTeamScorecard(team.scorecard ?? []).filter((hole) => hole.netStrokes !== null && hole.netStrokes !== undefined).length;
+                  return (
+                    <article key={`team-mobile-${teamKey}`} className={`tgt-live-team-mobile-card${isOpen ? " is-open" : ""}`}>
+                      <button type="button" className="tgt-live-team-mobile-row" onClick={() => setSelectedTeamId(isOpen ? null : teamKey)}>
+                        <span className="tgt-mobile-position-stack">
+                          <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
+                          <PositionMovement value={roundTeamMovements[String(team.teamId ?? team.id)] ?? 0} />
+                        </span>
+                        <span className="tgt-live-team-mobile-name"><strong>{team.teamName ?? team.name ?? "Ukendt hold"}</strong><small>Tryk for best ball-scorekort</small></span>
+                        <strong className="tgt-live-team-mobile-score" style={getLeaderboardScoreStyle(teamScoreToPar ?? 0)}>{teamHolesPlayed === 0 ? "E" : formatScore(teamScoreToPar)}</strong>
+                        <strong className="tgt-live-team-mobile-thru">{teamHolesPlayed}</strong>
+                      </button>
+                      {isOpen && <div className="tgt-live-team-mobile-scorecard"><SplitScorecard scorecard={normalizeTeamScorecard(team.scorecard ?? [])} position={index + 1} /></div>}
+                    </article>
+                  );
+                })}
+              </div>
+              <table className="tgt-live-team-desktop-table">
                 <thead>
                   <tr>
                     <th className="position-column">#</th>

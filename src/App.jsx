@@ -451,6 +451,7 @@ function Leaderboard({ onOpenLogin }) {
           individual_enabled,
           team_enabled,
           course_id,
+          tee_id,
           courses (club_name, course_name),
           tournaments!inner (season)
         `)
@@ -638,7 +639,7 @@ function Leaderboard({ onOpenLogin }) {
         (round) => round.round_type === "individual_final"
       );
 
-      const [currentLiveData, currentTeamData] = await Promise.all([
+      let [currentLiveData, currentTeamData] = await Promise.all([
         getLiveRoundLeaderboard({ season: selectedSeason }),
         teamFinalRound
           ? getTeamLeaderboard({
@@ -647,6 +648,30 @@ function Leaderboard({ onOpenLogin }) {
             })
           : Promise.resolve(null),
       ]);
+
+      const currentLiveRound = (roundRows ?? []).find(
+        (round) => round.id === currentLiveData?.round?.id
+      );
+      const liveTeeId =
+        currentLiveData?.round?.teeId ??
+        currentLiveData?.round?.tee_id ??
+        currentLiveRound?.tee_id;
+
+      if (currentLiveData?.round && liveTeeId) {
+        const { data: liveTee, error: liveTeeError } = await supabase
+          .from("course_tees")
+          .select("id, tee_name, course_rating, slope_rating")
+          .eq("id", liveTeeId)
+          .maybeSingle();
+        if (liveTeeError) throw liveTeeError;
+        currentLiveData = {
+          ...currentLiveData,
+          round: {
+            ...currentLiveData.round,
+            tee: liveTee ?? null,
+          },
+        };
+      }
 
       const currentClosestEntries = currentLiveData?.round?.id
         ? await getClosestToPinEntries(currentLiveData.round.id)

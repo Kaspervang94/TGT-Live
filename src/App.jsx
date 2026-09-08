@@ -1824,7 +1824,7 @@ function Leaderboard({ onOpenLogin }) {
             </div>
           )}
 
-          {mainTab && (
+          {mainTab && !individualFullscreen && !teamFullscreen && !liveFullscreen && !panelFullscreen && (
           <div
             className="tgt-tabs"
             style={{

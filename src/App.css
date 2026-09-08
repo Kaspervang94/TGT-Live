@@ -1926,3 +1926,12 @@ body.tgt-menu-open {
   .tgt-panel-fullscreen > .leaderboard-card > nav[aria-label="Leaderboard kategori"],
   .tgt-panel-fullscreen > .leaderboard-card > .tgt-tabs { display: none !important; }
 }
+
+
+/* Etape 5: Popup-visninger har ingen gammel fanemenu */
+.tgt-individual-fullscreen > .leaderboard-card > .tgt-tabs,
+.tgt-team-fullscreen > .leaderboard-card > .tgt-tabs,
+.tgt-live-fullscreen > .leaderboard-card > .tgt-tabs,
+.tgt-panel-fullscreen > .leaderboard-card > .tgt-tabs {
+  display: none !important;
+}

@@ -489,7 +489,7 @@ function Leaderboard({ onOpenLogin }) {
           round_type,
           individual_enabled,
           team_enabled,
-          live_leaderboard_enabled,
+          live_leaderboard_mode,
           course_id,
           tee_id,
           courses (club_name, course_name),
@@ -710,7 +710,7 @@ function Leaderboard({ onOpenLogin }) {
             ...currentLiveData.round,
             tee: liveTee ?? null,
             holes: currentLiveData.holes ?? [],
-            liveLeaderboardEnabled: Boolean(currentLiveRound?.live_leaderboard_enabled),
+            liveLeaderboardMode: currentLiveRound?.live_leaderboard_mode ?? "none",
           },
         };
       }
@@ -721,7 +721,7 @@ function Leaderboard({ onOpenLogin }) {
           round: {
             ...currentLiveData.round,
             holes: currentLiveData.holes ?? [],
-            liveLeaderboardEnabled: Boolean(currentLiveRound?.live_leaderboard_enabled),
+            liveLeaderboardMode: currentLiveRound?.live_leaderboard_mode ?? "none",
           },
         };
       }
@@ -830,11 +830,14 @@ function Leaderboard({ onOpenLogin }) {
       approvedBonuses,
     })
   );
-  const liveCumulativeActive = Boolean(
-    liveData?.round?.liveLeaderboardEnabled ??
-    liveData?.round?.live_leaderboard_enabled
-  );
-  const cumulativeStandings = liveCumulativeActive && finalStandingsData?.standings?.length
+  const liveLeaderboardMode =
+    liveData?.round?.liveLeaderboardMode ??
+    liveData?.round?.live_leaderboard_mode ??
+    "none";
+  const individualLiveCumulativeActive = ["individual", "both"].includes(liveLeaderboardMode);
+  const teamLiveCumulativeActive = ["team", "both"].includes(liveLeaderboardMode);
+  const liveCumulativeActive = individualLiveCumulativeActive || teamLiveCumulativeActive;
+  const cumulativeStandings = individualLiveCumulativeActive && finalStandingsData?.standings?.length
     ? [...finalStandingsData.standings]
         .map((player) => ({
           player_id: player.playerId,
@@ -851,6 +854,30 @@ function Leaderboard({ onOpenLogin }) {
         })
     : standings;
   const teamLeaderboard = teamData?.leaderboard ?? [];
+  const liveTeamById = new Map(
+    teamLeaderboard.map((team) => [team.teamId ?? team.id, team])
+  );
+  const cumulativeTeamStandings = teamLiveCumulativeActive
+    ? historicalTeamStandings
+        .map((team) => {
+          const liveTeam = liveTeamById.get(team.teamId);
+          const liveScore = getTeamScoreToPar(liveTeam);
+          const liveHoles = liveTeam?.holesPlayed ?? liveTeam?.thru ?? 0;
+          return {
+            ...team,
+            liveScore: liveHoles > 0 && liveScore !== null ? liveScore : 0,
+            liveHoles,
+            cumulativeScore:
+              Number(team.halvedScore ?? 0) +
+              (liveHoles > 0 && liveScore !== null ? Number(liveScore) : 0),
+          };
+        })
+        .sort((a, b) =>
+          a.cumulativeScore !== b.cumulativeScore
+            ? a.cumulativeScore - b.cumulativeScore
+            : a.teamName.localeCompare(b.teamName, "da")
+        )
+    : historicalTeamStandings;
   const closestLeaders = calculateClosestToPinLeaders(
     closestEntries
   );
@@ -915,7 +942,7 @@ function Leaderboard({ onOpenLogin }) {
           ...roundLeaderboard?.round,
           tee: selectedTee,
           holes: roundLeaderboard?.holes ?? [],
-          liveLeaderboardEnabled: Boolean(round.live_leaderboard_enabled),
+          liveLeaderboardMode: round.live_leaderboard_mode ?? "none",
         },
       };
       setSelectedPublicRoundId(round.id);
@@ -1037,9 +1064,9 @@ function Leaderboard({ onOpenLogin }) {
   const headings = {
     season: {
       eyebrow: "Individuel turnering",
-      title: liveCumulativeActive ? "Samlet stilling live" : "Aktuel stilling",
-      description: liveCumulativeActive
-        ? `Placeringerne inkluderer den valgte live-runde ${liveData?.round?.name ?? ""} og opdateres automatisk hul for hul.`
+      title: individualLiveCumulativeActive ? "Samlet individuel stilling live" : "Aktuel stilling",
+      description: individualLiveCumulativeActive
+        ? `Den individuelle placering inkluderer ${liveData?.round?.name ?? "den valgte runde"} og opdateres automatisk hul for hul.`
         : "De fire laveste rundescores tæller. Den samlede score halveres efter fire tællende runder.",
     },
     live: {
@@ -2085,7 +2112,13 @@ function Leaderboard({ onOpenLogin }) {
               <p className="description">{currentHeading.description}</p>
             </div>
             <div className="live-badge">
-              <span className="live-dot" /> {liveCumulativeActive ? "SAMLET LIVE" : "LIVE"}
+              <span className="live-dot" /> {liveLeaderboardMode === "both"
+                ? "INDIVIDUEL + HOLD LIVE"
+                : liveLeaderboardMode === "individual"
+                  ? "INDIVIDUEL LIVE"
+                  : liveLeaderboardMode === "team"
+                    ? "HOLD LIVE"
+                    : "LIVE"}
             </div>
           </div>
 
@@ -2217,7 +2250,7 @@ function Leaderboard({ onOpenLogin }) {
                           <td><span className="player-name">{player.player_name}</span></td>
                           <td className="number-column final-score">
                             {formatScore(player.counting_score)}
-                            {liveCumulativeActive && (
+                            {individualLiveCumulativeActive && (
                               <small style={{ display: "block", marginTop: 3, color: "#78827d", fontSize: 10 }}>
                                 LIVE · {player.live_holes ?? 0}/18
                               </small>
@@ -2487,7 +2520,7 @@ function Leaderboard({ onOpenLogin }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {historicalTeamStandings.map((team, index) => {
+                  {cumulativeTeamStandings.map((team, index) => {
                     const isOpen = selectedTeamId === team.teamId;
                     return (
                       <Fragment key={team.teamId}>
@@ -2506,7 +2539,16 @@ function Leaderboard({ onOpenLogin }) {
                             <span className="player-name">{team.teamName}</span>
                           </td>
                           <td className="number-column final-score">
-                            {formatScore(team.halvedScore)}
+                            {formatScore(
+                              teamLiveCumulativeActive
+                                ? team.cumulativeScore
+                                : team.halvedScore
+                            )}
+                            {teamLiveCumulativeActive && (
+                              <small style={{ display: "block", marginTop: 3, color: "#78827d", fontSize: 10 }}>
+                                LIVE · {team.liveHoles ?? 0}/18
+                              </small>
+                            )}
                           </td>
                         </tr>
                         {isOpen && (
@@ -3691,7 +3733,7 @@ function SeasonRoundsAdmin({ season = 2027 }) {
     individualEnabled: true,
     teamEnabled: true,
     closestToPinEnabled: true,
-    liveLeaderboardEnabled: false,
+    liveLeaderboardMode: "none",
   };
 
   const [rounds, setRounds] = useState([]);
@@ -3717,17 +3759,17 @@ function SeasonRoundsAdmin({ season = 2027 }) {
       if (roundIds.length > 0) {
         const { data: flagRows, error: flagError } = await supabase
           .from("rounds")
-          .select("id, live_leaderboard_enabled")
+          .select("id, live_leaderboard_mode")
           .in("id", roundIds);
         if (flagError) throw flagError;
         liveFlags = flagRows ?? [];
       }
-      const liveFlagByRoundId = new Map(
-        liveFlags.map((round) => [round.id, Boolean(round.live_leaderboard_enabled)])
+      const liveModeByRoundId = new Map(
+        liveFlags.map((round) => [round.id, round.live_leaderboard_mode ?? "none"])
       );
       const roundsWithLiveFlag = result.rounds.map((round) => ({
         ...round,
-        live_leaderboard_enabled: liveFlagByRoundId.get(round.id) ?? false,
+        live_leaderboard_mode: liveModeByRoundId.get(round.id) ?? "none",
       }));
       setRounds(roundsWithLiveFlag);
       setCourses(result.courses);
@@ -3756,7 +3798,7 @@ function SeasonRoundsAdmin({ season = 2027 }) {
           individualEnabled: round.individual_enabled,
           teamEnabled: round.team_enabled,
           closestToPinEnabled: round.closest_to_pin_enabled,
-          liveLeaderboardEnabled: Boolean(round.live_leaderboard_enabled),
+          liveLeaderboardMode: round.live_leaderboard_mode ?? "none",
         };
       });
       setDrafts(nextDrafts);
@@ -3833,7 +3875,7 @@ function SeasonRoundsAdmin({ season = 2027 }) {
       });
       const { error: liveFlagError } = await supabase
         .from("rounds")
-        .update({ live_leaderboard_enabled: Boolean(draft.liveLeaderboardEnabled) })
+        .update({ live_leaderboard_mode: draft.liveLeaderboardMode ?? "none" })
         .eq("id", roundId);
       if (liveFlagError) throw liveFlagError;
       setMessage(`Runde ${saved.round_number} er gemt.`);
@@ -3915,7 +3957,7 @@ function SeasonRoundsAdmin({ season = 2027 }) {
 
       const { error: liveFlagError } = await supabase
         .from("rounds")
-        .update({ live_leaderboard_enabled: Boolean(newRound.liveLeaderboardEnabled) })
+        .update({ live_leaderboard_mode: newRound.liveLeaderboardMode ?? "none" })
         .eq("id", created.id);
       if (liveFlagError) throw liveFlagError;
       if (newRound.closestToPinEnabled && newRound.courseId) {
@@ -3964,7 +4006,6 @@ function SeasonRoundsAdmin({ season = 2027 }) {
           ["individualEnabled", "Individuel"],
           ["teamEnabled", "Holdturnering"],
           ["closestToPinEnabled", "Tættest på pinden"],
-          ["liveLeaderboardEnabled", "Opdatér samlet leaderboard live"],
         ].map(([field, label]) => (
           <label key={field}>
             <input
@@ -4154,6 +4195,22 @@ function SeasonRoundsAdmin({ season = 2027 }) {
                         updateDraft(round.id, field, value)
                       }
                     />
+                    <label style={{ minWidth: 260 }}>
+                      <span className="tgt-admin-field-label">Samlet leaderboard live</span>
+                      <select
+                        value={draft.liveLeaderboardMode ?? "none"}
+                        onChange={(event) =>
+                          updateDraft(round.id, "liveLeaderboardMode", event.target.value)
+                        }
+                        className="form-input"
+                        disabled={isLocked}
+                      >
+                        <option value="none">Ingen</option>
+                        <option value="individual">Individuel</option>
+                        <option value="team">Hold</option>
+                        <option value="both">Begge</option>
+                      </select>
+                    </label>
                     <ClosestToPinHoleSelector roundId={round.id} courseId={draft.courseId} disabled={isLocked} />
                     <div className="tgt-round-admin-actions">
                       <button
@@ -4313,6 +4370,24 @@ function SeasonRoundsAdmin({ season = 2027 }) {
                   }))
                 }
               />
+              <label style={{ display: "block", maxWidth: 420, marginTop: 14 }}>
+                <span className="tgt-admin-field-label">Samlet leaderboard live</span>
+                <select
+                  value={newRound.liveLeaderboardMode ?? "none"}
+                  onChange={(event) =>
+                    setNewRound((current) => ({
+                      ...current,
+                      liveLeaderboardMode: event.target.value,
+                    }))
+                  }
+                  className="form-input"
+                >
+                  <option value="none">Ingen</option>
+                  <option value="individual">Individuel</option>
+                  <option value="team">Hold</option>
+                  <option value="both">Begge</option>
+                </select>
+              </label>
             </div>
 
             <button
@@ -6966,7 +7041,7 @@ function MarkerDashboard({
               course_id,
               tee_id,
               tee_name,
-              live_leaderboard_enabled,
+              live_leaderboard_mode,
               locked_at,
               locked_by
             )
@@ -7621,7 +7696,13 @@ function MarkerDashboard({
                 <div className="tgt-marker-kpi"><span>Runde</span><strong>{assignment.rounds?.round_number}</strong></div>
                 <div className="tgt-marker-kpi"><span>Starttid</span><strong>{formatTime(assignment.tee_time)}</strong></div>
                 <div className="tgt-marker-kpi"><span>Tee</span><strong>{markerTee?.tee_name ?? assignment.rounds?.tee_name ?? "Ikke valgt"}</strong></div>
-                <div className="tgt-marker-kpi"><span>Samlet leaderboard</span><strong>{assignment.rounds?.live_leaderboard_enabled ? "LIVE" : "Fra"}</strong></div>
+                <div className="tgt-marker-kpi"><span>Samlet leaderboard</span><strong>{assignment.rounds?.live_leaderboard_mode === "individual"
+                  ? "Individuel"
+                  : assignment.rounds?.live_leaderboard_mode === "team"
+                    ? "Hold"
+                    : assignment.rounds?.live_leaderboard_mode === "both"
+                      ? "Begge"
+                      : "Fra"}</strong></div>
                 <div className="tgt-marker-kpi tgt-marker-progress"><span>Huller gemt</span><strong>{completedHoles} / 18 huller</strong></div>
               </div>
 

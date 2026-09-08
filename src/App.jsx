@@ -408,6 +408,7 @@ function Leaderboard({ onOpenLogin }) {
           name,
           played_at,
           status,
+          round_type,
           individual_enabled,
           team_enabled,
           course_id,
@@ -591,9 +592,21 @@ function Leaderboard({ onOpenLogin }) {
         );
       setHistoricalTeamStandings(teamStandings);
 
+      const teamFinalRound = (roundRows ?? []).find(
+        (round) => round.round_type === "team_final"
+      );
+      const individualFinalRound = (roundRows ?? []).find(
+        (round) => round.round_type === "individual_final"
+      );
+
       const [currentLiveData, currentTeamData] = await Promise.all([
         getLiveRoundLeaderboard({ season: selectedSeason }),
-        getTeamLeaderboard({ season: 2026, roundNumber: 6 }),
+        teamFinalRound
+          ? getTeamLeaderboard({
+              season: selectedSeason,
+              roundNumber: teamFinalRound.round_number,
+            })
+          : Promise.resolve(null),
       ]);
 
       const currentClosestEntries = currentLiveData?.round?.id
@@ -635,12 +648,16 @@ function Leaderboard({ onOpenLogin }) {
       }
 
       try {
-        const currentFinalStandings = await getFinalStandings({
-          season: 2026,
-          roundSixNumber: 6,
-          roundSevenNumber: 7,
-        });
-        setFinalStandingsData(currentFinalStandings);
+        if (!teamFinalRound || !individualFinalRound) {
+          setFinalStandingsData(null);
+        } else {
+          const currentFinalStandings = await getFinalStandings({
+            season: selectedSeason,
+            roundSixNumber: teamFinalRound.round_number,
+            roundSevenNumber: individualFinalRound.round_number,
+          });
+          setFinalStandingsData(currentFinalStandings);
+        }
       } catch (finalError) {
         console.error(
           "Finalestillingen kunne ikke hentes:",
@@ -3657,12 +3674,24 @@ function SeasonRoundsAdmin({ season = 2027 }) {
     setMessage("");
     setErrorMessage("");
     try {
-      const { error } = await supabase
+      const { data: deletedRows, error } = await supabase
         .from("rounds")
         .delete()
-        .eq("id", round.id);
+        .eq("id", round.id)
+        .select("id");
       if (error) throw error;
+      if (!deletedRows?.some((deletedRound) => deletedRound.id === round.id)) {
+        throw new Error("Runden blev ikke slettet. Kontrollér administratorrettighederne.");
+      }
 
+      setRounds((current) =>
+        current.filter((currentRound) => currentRound.id !== round.id)
+      );
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[round.id];
+        return next;
+      });
       setMessage(`Runde ${round.round_number} · ${round.name} er slettet.`);
       await loadRounds();
     } catch (error) {
@@ -5383,6 +5412,7 @@ function AdminClosestToPin({ session, onLogout }) {
           round_number,
           name,
           played_at,
+          round_type,
           locked_at,
           locked_by,
           tournaments!inner (
@@ -5390,7 +5420,7 @@ function AdminClosestToPin({ session, onLogout }) {
           )
         `)
         .eq("tournaments.season", 2026)
-        .in("round_number", [6, 7])
+        .in("round_type", ["team_final", "individual_final"])
         .order("round_number", { ascending: true });
 
       if (roundError) throw roundError;
@@ -5398,31 +5428,31 @@ function AdminClosestToPin({ session, onLogout }) {
       const rounds = round ?? [];
       setRoundLocks(rounds);
 
-      const roundSix = rounds.find(
-        (item) => item.round_number === 6
+      const teamFinalRound = rounds.find(
+        (item) => item.round_type === "team_final"
       );
 
-      if (!roundSix) {
-        throw new Error("Runde 6 blev ikke fundet.");
+      setRoundId(teamFinalRound?.id ?? null);
+
+      if (teamFinalRound?.tournament_id) {
+        const { data: archive, error: archiveError } = await supabase
+          .from("season_champions")
+          .select(`
+            id,
+            season,
+            individual_champion_name,
+            individual_score,
+            team_champion_name,
+            finalized_at
+          `)
+          .eq("tournament_id", teamFinalRound.tournament_id)
+          .maybeSingle();
+
+        if (archiveError) throw archiveError;
+        setSeasonArchive(archive);
+      } else {
+        setSeasonArchive(null);
       }
-
-      setRoundId(roundSix.id);
-
-      const { data: archive, error: archiveError } = await supabase
-        .from("season_champions")
-        .select(`
-          id,
-          season,
-          individual_champion_name,
-          individual_score,
-          team_champion_name,
-          finalized_at
-        `)
-        .eq("tournament_id", roundSix.tournament_id)
-        .maybeSingle();
-
-      if (archiveError) throw archiveError;
-      setSeasonArchive(archive);
 
       const { data: nextSeason, error: nextSeasonError } = await supabase
         .from("tournaments")
@@ -5453,25 +5483,29 @@ function AdminClosestToPin({ session, onLogout }) {
         setSeason2027PlayerCount(0);
       }
 
-      const { data: winners, error: winnersError } = await supabase
-        .from("closest_to_pin")
-        .select(`
-          id,
-          hole_number,
-          distance_meters,
-          bonus_strokes,
-          approved,
-          players (
+      if (teamFinalRound?.id) {
+        const { data: winners, error: winnersError } = await supabase
+          .from("closest_to_pin")
+          .select(`
             id,
-            name
-          )
-        `)
-        .eq("round_id", roundSix.id)
-        .eq("approved", true)
-        .order("hole_number", { ascending: true });
+            hole_number,
+            distance_meters,
+            bonus_strokes,
+            approved,
+            players (
+              id,
+              name
+            )
+          `)
+          .eq("round_id", teamFinalRound.id)
+          .eq("approved", true)
+          .order("hole_number", { ascending: true });
 
-      if (winnersError) throw winnersError;
-      setApprovedWinners(winners ?? []);
+        if (winnersError) throw winnersError;
+        setApprovedWinners(winners ?? []);
+      } else {
+        setApprovedWinners([]);
+      }
     } catch (error) {
       console.error("Fejl ved hentning af admindata:", error);
       setErrorMessage(
@@ -5519,7 +5553,7 @@ function AdminClosestToPin({ session, onLogout }) {
       return;
     }
     const confirmed = window.confirm(
-      "Vil du afslutte grundspillet i TGT ${adminSeasonTab}? De fire bedste scorer gemmes, og den samlede score halveres som udgangspunkt til finalen."
+      `Vil du afslutte grundspillet i TGT ${adminSeasonTab}? De fire bedste scorer gemmes, og den samlede score halveres som udgangspunkt til finalen.`
     );
     if (!confirmed) return;
     setFinalizingRegularSeason(true);
@@ -5616,10 +5650,21 @@ function AdminClosestToPin({ session, onLogout }) {
     setErrorMessage("");
 
     try {
+      const teamFinalRound = roundLocks.find(
+        (roundData) => roundData.round_type === "team_final"
+      );
+      const individualFinalRound = roundLocks.find(
+        (roundData) => roundData.round_type === "individual_final"
+      );
+      if (!teamFinalRound || !individualFinalRound) {
+        throw new Error(
+          "Opret både en holdfinale og en individuel finale under Runder først."
+        );
+      }
       const preview = await getFinalFlightsPreview({
         season: 2026,
-        sourceRoundNumber: 6,
-        finalRoundNumber: 7,
+        sourceRoundNumber: teamFinalRound.round_number,
+        finalRoundNumber: individualFinalRound.round_number,
       });
 
       setFinalPreview(preview);
@@ -5731,16 +5776,23 @@ function AdminClosestToPin({ session, onLogout }) {
   }
 
   async function handleFinalizeSeason() {
-    const roundSix = roundLocks.find(
-      (roundData) => roundData.round_number === 6
+    const teamFinalRound = roundLocks.find(
+      (roundData) => roundData.round_type === "team_final"
     );
-    const roundSeven = roundLocks.find(
-      (roundData) => roundData.round_number === 7
+    const individualFinalRound = roundLocks.find(
+      (roundData) => roundData.round_type === "individual_final"
     );
 
-    if (!roundSix?.locked_at || !roundSeven?.locked_at) {
+    if (!teamFinalRound || !individualFinalRound) {
       setErrorMessage(
-        "Både Runde 6 og Runde 7 skal være låst først."
+        "Opret både en holdfinale og en individuel finale under Runder først."
+      );
+      return;
+    }
+
+    if (!teamFinalRound.locked_at || !individualFinalRound.locked_at) {
+      setErrorMessage(
+        "Både holdfinalen og den individuelle finale skal være låst først."
       );
       return;
     }
@@ -5753,10 +5805,13 @@ function AdminClosestToPin({ session, onLogout }) {
       const [finalData, teamResult] = await Promise.all([
         getFinalStandings({
           season: 2026,
-          roundSixNumber: 6,
-          roundSevenNumber: 7,
+          roundSixNumber: teamFinalRound.round_number,
+          roundSevenNumber: individualFinalRound.round_number,
         }),
-        getTeamLeaderboard({ season: 2026, roundNumber: 6 }),
+        getTeamLeaderboard({
+          season: 2026,
+          roundNumber: teamFinalRound.round_number,
+        }),
       ]);
 
       if (!finalData.finalCompleted || !finalData.champion) {
@@ -5784,7 +5839,7 @@ function AdminClosestToPin({ session, onLogout }) {
       const { error } = await supabase.rpc(
         "finalize_tgt_season",
         {
-          requested_tournament_id: roundSix.tournament_id,
+          requested_tournament_id: teamFinalRound.tournament_id,
           requested_individual_champion_id:
             finalData.champion.playerId,
           requested_individual_score:
@@ -5983,12 +6038,12 @@ function AdminClosestToPin({ session, onLogout }) {
                   <p className="eyebrow">Sæsoncenter · TGT {adminSeasonTab}</p>
                   <h2 style={{ marginTop: 0 }}>Afslut grundspillet og klargør sæsonfinalen</h2>
                   <p className="description">
-                    Runde 6 og Runde 7 bruger nu samme sikre flow som 2027:
+                    Finalerunder bruger samme sikre flow som alle andre runder:
                     deltagere, bolde, markørlogin, publicering og livescoring.
                   </p>
                   <div className="tgt-final-flow-grid">
-                    <div className="tgt-final-flow-card"><span>Runde 6</span><strong>Holdfinale og individuel runde</strong></div>
-                    <div className="tgt-final-flow-card"><span>Runde 7</span><strong>Individuel finale</strong></div>
+                    <div className="tgt-final-flow-card"><span>Holdfinale</span><strong>{roundLocks.find((roundData) => roundData.round_type === "team_final")?.name ?? "Opret under Runder"}</strong></div>
+                    <div className="tgt-final-flow-card"><span>Individuel finale</span><strong>{roundLocks.find((roundData) => roundData.round_type === "individual_final")?.name ?? "Opret under Runder"}</strong></div>
                     <div className="tgt-final-flow-card"><span>Arbejdsgang</span><strong>Draft → Ready → Live</strong></div>
                   </div>
                 </section>
@@ -6496,7 +6551,7 @@ function AdminClosestToPin({ session, onLogout }) {
                     (roundData) => !roundData.locked_at
                   ) && (
                     <div className="status-box" style={{ margin: "16px 0 0" }}>
-                      Runde 6 og Runde 7 skal begge være låst først.
+                      Holdfinalen og den individuelle finale skal begge være oprettet og låst først.
                     </div>
                   )}
                 </>

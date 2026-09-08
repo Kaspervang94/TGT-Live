@@ -1666,8 +1666,8 @@ function Leaderboard({ onOpenLogin }) {
               <button type="button" onClick={() => openPanelFullscreen("rounds")}>Runder</button>
               <button type="button" onClick={() => openPanelFullscreen("profiles")}>Spillerprofiler</button>
               <button type="button" onClick={() => openLiveFullscreen("individual")}>Live leaderboard</button>
-              <button type="button" onClick={() => openPublicView("team", "team")}>Holdturneringen</button>
-              <button type="button" onClick={() => openPublicView("individual", "hall")}>Hall of Fame</button>
+              <button type="button" onClick={openTeamFullscreen}>Holdturneringen</button>
+              <button type="button" onClick={() => openPanelFullscreen("hall")}>Hall of Fame</button>
               <div style={{ padding: "14px 16px 6px", color: "#d7b469", fontWeight: 900, letterSpacing: ".08em" }}>VÆLG SÆSON</div>
               {[2027, 2026].map((season) => (
                 <button key={season} type="button" onClick={() => switchSeason(season)} style={{ color: selectedSeason === season ? "#d7b469" : undefined, fontWeight: selectedSeason === season ? 900 : undefined }}>
@@ -2584,7 +2584,7 @@ function Leaderboard({ onOpenLogin }) {
         </section>
       </main>
       <nav className="tgt-mobile-bottom-nav" aria-label="Mobilnavigation">
-        <button type="button" className={tab === "season" ? "active" : ""} onClick={() => openPublicView("individual", "season")}>
+        <button type="button" className={tab === "season" ? "active" : ""} onClick={openIndividualFullscreen}>
           <span aria-hidden="true">◆</span><small>Leaderboard</small>
         </button>
         <button type="button" className={tab === "live" ? "active" : ""} onClick={() => openLiveFullscreen("individual")}>

@@ -7019,75 +7019,64 @@ function MarkerDashboard({
   }
 
   async function handleSaveHole() {
-    if (!assignment) {
-      return;
-    }
+    if (!assignment) return;
 
     setSavingScores(true);
     setSaveMessage("");
     setSaveError("");
 
-    const scoresToSave = players.map(
-      (player) => ({
+    const scoreChanges = players.map((player) => {
+      const value = draftScores[`${player.id}-${selectedHole}`];
+      const isEmpty = value === "" || value === null || value === undefined;
+      return {
         playerId: player.id,
+        strokes: isEmpty ? null : Number(value),
+        isEmpty,
+      };
+    });
 
-        strokes:
-          draftScores[
-            `${player.id}-${selectedHole}`
-          ] ?? "",
-      })
-    );
-
-    const missingPlayers = scoresToSave.filter(
-      (score) =>
-        score.strokes === "" ||
-        score.strokes === null ||
-        score.strokes === undefined
-    );
-
-    if (missingPlayers.length > 0) {
-      setSaveError(
-        "Indtast en score for alle spillere i bolden."
-      );
-
-      setSavingScores(false);
-      return;
-    }
+    const scoresToDelete = scoreChanges.filter((score) => score.isEmpty);
+    const scoresToSave = scoreChanges
+      .filter((score) => !score.isEmpty)
+      .map(({ playerId, strokes }) => ({ playerId, strokes }));
 
     try {
-      await saveHoleScores({
-        roundId: assignment.round_id,
-        holeNumber: selectedHole,
-        scores: scoresToSave,
-      });
+      if (scoresToDelete.length > 0) {
+        const { error: deleteError } = await supabase
+          .from("scores")
+          .delete()
+          .eq("round_id", assignment.round_id)
+          .eq("hole_number", selectedHole)
+          .in("player_id", scoresToDelete.map((score) => score.playerId));
+        if (deleteError) throw deleteError;
+      }
+
+      if (scoresToSave.length > 0) {
+        await saveHoleScores({
+          roundId: assignment.round_id,
+          holeNumber: selectedHole,
+          scores: scoresToSave,
+        });
+      }
 
       setSaveMessage(
-        `Hul ${selectedHole} er gemt for hele bolden.`
+        scoresToDelete.length > 0
+          ? `Hul ${selectedHole} er opdateret. Tomme scorefelter er slettet.`
+          : `Hul ${selectedHole} er gemt for hele bolden.`
       );
-
-      await loadScores(
-        assignment.round_id,
-        players
-      );
+      await loadScores(assignment.round_id, players);
 
       if (
+        scoresToDelete.length === 0 &&
+        scoresToSave.length === players.length &&
         selectedHole < 18 &&
         holes.length >= selectedHole + 1
       ) {
-        setSelectedHole(
-          (currentHole) => currentHole + 1
-        );
+        setSelectedHole((currentHole) => currentHole + 1);
       }
     } catch (error) {
-      console.error(
-        "Fejl ved gemning af scores:",
-        error
-      );
-
-      setSaveError(
-        error.message ??
-          "Scorerne kunne ikke gemmes."
-      );
+      console.error("Fejl ved gemning eller sletning af scores:", error);
+      setSaveError(error.message ?? "Scorerne kunne ikke gemmes eller slettes.");
     } finally {
       setSavingScores(false);
     }

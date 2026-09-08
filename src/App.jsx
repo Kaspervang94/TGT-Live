@@ -60,6 +60,15 @@ import {
   updateFlight,
 } from "./lib/flightAdmin";
 
+const LUBKER_FINAL_COURSES = [
+  { clubName: "Lübker Golf Klub", courseName: "Sand/Forest",
+    holes: [[1,5,3],[2,3,17],[3,4,11],[4,3,13],[5,5,1],[6,3,15],[7,4,7],[8,5,5],[9,4,9],[10,5,2],[11,4,6],[12,5,4],[13,4,8],[14,3,18],[15,4,12],[16,3,16],[17,4,14],[18,4,10]],
+    tees: [["Gold · Herre",75.1,138,6215],["Sort · Herre",73.5,134,5882],["White · Herre",71.8,131,5537],["Yellow · Herre",69.6,127,5102],["Red · Herre",66.9,125,4640],["Gold · Dame",81.6,150,6215],["Sort · Dame",79.7,145,5882],["White · Dame",77.6,141,5537],["Yellow · Dame",74.9,136,5102],["Red · Dame",72.1,130,4640]] },
+  { clubName: "Lübker Golf Klub", courseName: "Sand/Sky",
+    holes: [[1,5,3],[2,3,17],[3,4,11],[4,3,13],[5,5,1],[6,3,15],[7,4,7],[8,5,5],[9,4,9],[10,5,4],[11,4,6],[12,4,12],[13,3,18],[14,4,14],[15,4,10],[16,3,16],[17,4,8],[18,5,2]],
+    tees: [["Gold · Herre",76.3,147,6476],["Sort · Herre",74.5,142,6103],["White · Herre",72.8,139,5770],["Yellow · Herre",71.1,136,5415],["Red · Herre",68.0,132,4841],["Gold · Dame",83.5,154,6476],["Sort · Dame",81.3,149,6103],["White · Dame",79.3,145,5770],["Yellow · Dame",77.1,140,5415],["Red · Dame",73.6,133,4841]] },
+];
+
 function formatScore(score) {
   if (score === null || score === undefined) {
     return "Afventer";
@@ -5002,6 +5011,7 @@ function CourseDatabaseAdmin() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [importingLubker, setImportingLubker] = useState(false);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [newCourse, setNewCourse] = useState({ clubName: "", courseName: "" });
@@ -5189,12 +5199,48 @@ function CourseDatabaseAdmin() {
     }
   }
 
+  async function importLubkerFinalCourses() {
+    setImportingLubker(true); setMessage(""); setErrorMessage("");
+    try {
+      for (const preset of LUBKER_FINAL_COURSES) {
+        const found = await supabase.from("courses").select("id").eq("club_name", preset.clubName).eq("course_name", preset.courseName).maybeSingle();
+        if (found.error) throw found.error;
+        let courseId = found.data?.id;
+        if (!courseId) {
+          const created = await supabase.from("courses").insert({ club_name: preset.clubName, course_name: preset.courseName }).select("id").single();
+          if (created.error) throw created.error;
+          courseId = created.data.id;
+        }
+        const existingHoles = await supabase.from("course_holes").select("id, hole_number").eq("course_id", courseId);
+        if (existingHoles.error) throw existingHoles.error;
+        const holeIds = new Map((existingHoles.data ?? []).map((hole) => [Number(hole.hole_number), hole.id]));
+        const savedHoles = await supabase.from("course_holes").upsert(preset.holes.map(([holeNumber, par, strokeIndex]) => ({ ...(holeIds.get(holeNumber) ? { id: holeIds.get(holeNumber) } : {}), course_id: courseId, hole_number: holeNumber, par, stroke_index: strokeIndex })));
+        if (savedHoles.error) throw savedHoles.error;
+        for (const [teeName, courseRating, slopeRating, totalLength] of preset.tees) {
+          const foundTee = await supabase.from("course_tees").select("id").eq("course_id", courseId).eq("tee_name", teeName).maybeSingle();
+          if (foundTee.error) throw foundTee.error;
+          const payload = { course_id: courseId, tee_name: teeName, course_rating: courseRating, slope_rating: slopeRating, total_length_meters: totalLength };
+          const savedTee = foundTee.data?.id ? await supabase.from("course_tees").update(payload).eq("id", foundTee.data.id) : await supabase.from("course_tees").insert(payload);
+          if (savedTee.error) throw savedTee.error;
+        }
+      }
+      setMessage("Lübker Sand/Forest og Sand/Sky er klar i banedatabasen.");
+      await loadCourses();
+    } catch (error) { setErrorMessage(error.message ?? "Lübker-banerne kunne ikke importeres."); }
+    finally { setImportingLubker(false); }
+  }
+
   return (
     <section className="tgt-course-database">
       <header className="tgt-course-db-header">
         <div><p className="eyebrow">Permanent TGT-register</p><h2>Banedatabase</h2><p className="description">Opret, søg og genbrug klubber, baner, tees og huldata på tværs af alle sæsoner.</p></div>
         <div className="tgt-course-db-count"><span>Baner</span><strong>{courses.length}</strong></div>
       </header>
+      <section style={{ marginTop: 18, padding: 18, border: "1px solid rgba(199,154,66,.38)", borderRadius: 16, background: "#fffaf0", textAlign: "center" }}>
+        <p className="eyebrow">Finalebaner 2026</p><h3 style={{ margin: "5px 0 8px" }}>Lübker-konverteringstabeller</h3>
+        <p className="description" style={{ marginBottom: 14 }}>Importerer eller opdaterer Sand/Forest og Sand/Sky med tees, CR, slope, par og stroke index.</p>
+        <button type="button" className="login-submit-button" onClick={importLubkerFinalCourses} disabled={saving || importingLubker} style={{ maxWidth: 420, margin: "0 auto" }}>{importingLubker ? "Importerer Lübker..." : "Importér Lübker Sand/Forest og Sand/Sky"}</button>
+      </section>
       {message && <div className="status-box">{message}</div>}
       {errorMessage && <div className="error-box"><strong>Banedatabasen kunne ikke opdateres</strong><span>{errorMessage}</span></div>}
       <div className="tgt-course-db-layout">
@@ -5264,7 +5310,7 @@ function AdminClosestToPin({ session, onLogout }) {
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [adminSeasonTab, setAdminSeasonTab] = useState("2026");
-  const [admin2027Tab, setAdmin2027Tab] = useState("overview");
+  const [adminSection, setAdminSection] = useState("overview");
 
   const loadAdminData = useCallback(async () => {
     setLoading(true);
@@ -5667,7 +5713,7 @@ function AdminClosestToPin({ session, onLogout }) {
             <p className="eyebrow">TGT administration</p>
             <h1>TGT Administration</h1>
             <p className="description">
-              Administrér finalerne i 2026 og klargør hele TGT 2027 fra ét samlet overblik.
+              Administrér spillere, hold, runder, deltagere, bolde og baner ens på tværs af sæsoner.
             </p>
           </div>
 
@@ -5705,13 +5751,13 @@ function AdminClosestToPin({ session, onLogout }) {
               }}
             >
               {[
-                ["2026", "2026 Finale"],
-                ["2027", "2027 Opsætning"],
+                ["2026", "TGT 2026"],
+                ["2027", "TGT 2027"],
               ].map(([value, label]) => (
                 <button
                   type="button"
                   key={value}
-                  onClick={() => setAdminSeasonTab(value)}
+                  onClick={() => { setAdminSeasonTab(value); setAdminSection("overview"); }}
                   className={
                     adminSeasonTab === value
                       ? "login-submit-button"
@@ -5724,9 +5770,9 @@ function AdminClosestToPin({ session, onLogout }) {
               ))}
             </nav>
 
-            {adminSeasonTab === "2027" && season2027 && (
+            {(adminSeasonTab === "2026" || season2027) && (
               <nav
-                aria-label="TGT 2027 administration"
+                aria-label={`TGT ${adminSeasonTab} administration`}
                 style={{
                   display: "flex",
                   flexWrap: "wrap",
@@ -5750,13 +5796,14 @@ function AdminClosestToPin({ session, onLogout }) {
                   ["participants", "Deltagere"],
                   ["flights", "Bolde"],
                   ["courses", "Banedatabase"],
+                  ...(adminSeasonTab === "2026" ? [["finals", "Finalestyring"]] : []),
                 ].map(([value, label]) => (
                   <button
                     type="button"
                     key={value}
-                    onClick={() => setAdmin2027Tab(value)}
+                    onClick={() => setAdminSection(value)}
                     className={
-                      admin2027Tab === value
+                      adminSection === value
                         ? "login-submit-button"
                         : "login-cancel-button"
                     }
@@ -5767,7 +5814,7 @@ function AdminClosestToPin({ session, onLogout }) {
                 ))}
               </nav>
             )}
-            {adminSeasonTab === "2026" && (
+            {adminSeasonTab === "2026" && adminSection === "finals" && (
               <>
                 <section
                   style={{
@@ -5791,9 +5838,6 @@ function AdminClosestToPin({ session, onLogout }) {
                   </div>
                 </section>
 
-                <SeasonRoundsAdmin season={2026} />
-                <RoundParticipantsAdmin season={2026} />
-                <FlightAdmin season={2026} />
 
             <section
               style={{
@@ -6144,9 +6188,9 @@ function AdminClosestToPin({ session, onLogout }) {
               </>
             )}
 
-            {adminSeasonTab === "2027" && (
+            {(adminSeasonTab === "2026" || season2027) && (
               <>
-                {admin2027Tab === "overview" && (
+                {adminSection === "overview" && (
             <section
               style={{
                 marginTop: 24,
@@ -6158,26 +6202,26 @@ function AdminClosestToPin({ session, onLogout }) {
             >
               <p className="eyebrow">Ny sæson</p>
               <h2 style={{ marginTop: 0 }}>
-                {season2027 ? "TGT 2027 er oprettet" : "Opret TGT 2027"}
+                {adminSeasonTab === "2026" ? "TGT 2026 administration" : season2027 ? "TGT 2027 er oprettet" : "Opret TGT 2027"}
               </h2>
 
-              {season2027 ? (
+              {adminSeasonTab === "2026" || season2027 ? (
                 <div className="flight-information" style={{ marginTop: 18 }}>
                   <div>
                     <span>Status</span>
-                    <strong>{season2027.status}</strong>
+                    <strong>{adminSeasonTab === "2026" ? "Aktiv" : season2027.status}</strong>
                   </div>
                   <div>
                     <span>Offentlig</span>
-                    <strong>{season2027.is_public ? "Ja" : "Nej"}</strong>
+                    <strong>{adminSeasonTab === "2026" ? "Ja" : season2027.is_public ? "Ja" : "Nej"}</strong>
                   </div>
                   <div>
                     <span>Aktive spillere</span>
-                    <strong>{season2027PlayerCount}</strong>
+                    <strong>{adminSeasonTab === "2026" ? "15" : season2027PlayerCount}</strong>
                   </div>
                   <div>
                     <span>Opsætning</span>
-                    <strong>Kladde</strong>
+                    <strong>{adminSeasonTab === "2026" ? "Finaleklar" : "Kladde"}</strong>
                   </div>
                 </div>
               ) : (
@@ -6205,22 +6249,22 @@ function AdminClosestToPin({ session, onLogout }) {
 
                 )}
 
-                {season2027 && admin2027Tab === "players" && (
-                  <SeasonPlayersAdmin season={2027} />
+                {adminSection === "players" && (
+                  <SeasonPlayersAdmin season={Number(adminSeasonTab)} />
                 )}
-                {season2027 && admin2027Tab === "teams" && (
-                  <SeasonTeamsAdmin season={2027} />
+                {adminSection === "teams" && (
+                  <SeasonTeamsAdmin season={Number(adminSeasonTab)} />
                 )}
-                {season2027 && admin2027Tab === "rounds" && (
-                  <SeasonRoundsAdmin season={2027} />
+                {adminSection === "rounds" && (
+                  <SeasonRoundsAdmin season={Number(adminSeasonTab)} />
                 )}
-                {season2027 && admin2027Tab === "participants" && (
-                  <RoundParticipantsAdmin season={2027} />
+                {adminSection === "participants" && (
+                  <RoundParticipantsAdmin season={Number(adminSeasonTab)} />
                 )}
-                {season2027 && admin2027Tab === "flights" && (
-                  <FlightAdmin season={2027} />
+                {adminSection === "flights" && (
+                  <FlightAdmin season={Number(adminSeasonTab)} />
                 )}
-                {admin2027Tab === "courses" && (
+                {adminSection === "courses" && (
                   <CourseDatabaseAdmin />
                 )}
               </>

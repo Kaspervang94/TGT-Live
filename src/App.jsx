@@ -2614,7 +2614,7 @@ function MarkerLogin({
   onCancel,
   onLoginSuccess,
 }) {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -2625,9 +2625,14 @@ function MarkerLogin({
     setLoggingIn(true);
     setLoginError("");
 
+    const normalizedUsername = username.trim().toLowerCase().replace(/\s+/g, "");
+    const loginEmail = normalizedUsername.includes("@")
+      ? normalizedUsername
+      : `${normalizedUsername}@tgt.dk`;
+
     const { data, error } =
       await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
+        email: loginEmail,
         password,
       });
 
@@ -2635,7 +2640,7 @@ function MarkerLogin({
       console.error("Loginfejl:", error);
 
       setLoginError(
-        "Login mislykkedes. Kontrollér boldens mail og adgangskode."
+        "Login mislykkedes. Kontrollér brugernavn og kodeord."
       );
 
       setLoggingIn(false);
@@ -2661,23 +2666,23 @@ function MarkerLogin({
 
         <form onSubmit={handleLogin}>
           <label className="form-label">
-            Boldens mailadresse
+            Brugernavn
           </label>
 
           <input
-            type="email"
-            value={email}
+            type="text"
+            value={username}
             onChange={(event) =>
-              setEmail(event.target.value)
+              setUsername(event.target.value)
             }
-            placeholder="bold1@tgt.dk"
+            placeholder="fx bold1 eller admin"
             autoComplete="username"
             required
             className="form-input"
           />
 
           <label className="form-label">
-            Adgangskode
+            Kodeord
           </label>
 
           <input
@@ -2686,7 +2691,7 @@ function MarkerLogin({
             onChange={(event) =>
               setPassword(event.target.value)
             }
-            placeholder="Indtast adgangskode"
+            placeholder="Indtast kodeord"
             autoComplete="current-password"
             required
             className="form-input"
@@ -4883,8 +4888,8 @@ function FlightAdmin({ season = 2027 }) {
                     }}
                   >
                     {flight.markers?.length > 0
-                      ? `Markørlogin tilknyttet: bold${draft.flightNumber}@tgt.dk`
-                      : `Markørlogin mangler: bold${draft.flightNumber}@tgt.dk`}
+                      ? `Markørlogin tilknyttet: bold${draft.flightNumber}`
+                      : `Markørlogin mangler: bold${draft.flightNumber}`}
                   </div>
 
                   <div
@@ -7042,7 +7047,7 @@ function MarkerDashboard({
             </h1>
 
             <p className="description">
-              Logget ind som {session.user.email}
+              Logget ind som {session.user.email?.split("@")[0] ?? "markør"}
             </p>
           </div>
 
@@ -7720,7 +7725,7 @@ export default function App() {
   if (session) {
     const isAdmin =
       session.user.email?.toLowerCase() ===
-      "kasper.vang@soderbergpartners.dk";
+      "admin@tgt.dk";
 
     if (isAdmin) {
       return (

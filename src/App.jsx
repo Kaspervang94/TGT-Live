@@ -3636,6 +3636,41 @@ function SeasonRoundsAdmin({ season = 2027 }) {
     }
   }
 
+  async function handleDeleteRound(round) {
+    if (!round?.id) return;
+    if (round.locked_at) {
+      setErrorMessage("Runden er låst og skal genåbnes, før den kan slettes.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Vil du slette Runde ${round.round_number} · ${round.name}? Deltagere, bolde, markørtilknytninger og øvrige data på runden kan også blive slettet. Handlingen kan ikke fortrydes.`
+    );
+    if (!confirmed) return;
+
+    setSavingRoundId(round.id);
+    setMessage("");
+    setErrorMessage("");
+    try {
+      const { error } = await supabase
+        .from("rounds")
+        .delete()
+        .eq("id", round.id);
+      if (error) throw error;
+
+      setMessage(`Runde ${round.round_number} · ${round.name} er slettet.`);
+      await loadRounds();
+    } catch (error) {
+      console.error("Fejl ved sletning af runde:", error);
+      setErrorMessage(
+        error.message ??
+          "Runden kunne ikke slettes. Kontrollér sletterettigheder og relationer i databasen."
+      );
+    } finally {
+      setSavingRoundId(null);
+    }
+  }
+
   async function handleCreateRound(event) {
     event.preventDefault();
     setCreatingRound(true);
@@ -3864,19 +3899,34 @@ function SeasonRoundsAdmin({ season = 2027 }) {
                       }
                     />
                     <ClosestToPinHoleSelector roundId={round.id} courseId={draft.courseId} disabled={isLocked} />
-                    <button
-                      type="button"
-                      onClick={() => handleSaveRound(round.id)}
-                      disabled={isLocked || savingRoundId === round.id}
-                      className="login-submit-button"
-                      style={{ width: "auto", marginTop: 0 }}
-                    >
-                      {isLocked
-                        ? "Runden er låst"
-                        : savingRoundId === round.id
-                          ? "Gemmer..."
-                          : "Gem runde"}
-                    </button>
+                    <div className="tgt-round-admin-actions">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRound(round)}
+                        disabled={isLocked || savingRoundId === round.id}
+                        className="login-cancel-button tgt-delete-round-button"
+                        style={{ width: "auto", marginTop: 0 }}
+                      >
+                        {isLocked
+                          ? "Genåbn før sletning"
+                          : savingRoundId === round.id
+                            ? "Arbejder..."
+                            : "Slet runde"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveRound(round.id)}
+                        disabled={isLocked || savingRoundId === round.id}
+                        className="login-submit-button"
+                        style={{ width: "auto", marginTop: 0 }}
+                      >
+                        {isLocked
+                          ? "Runden er låst"
+                          : savingRoundId === round.id
+                            ? "Gemmer..."
+                            : "Gem runde"}
+                      </button>
+                    </div>
                   </div>
                 </article>
               );

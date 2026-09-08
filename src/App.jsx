@@ -81,6 +81,40 @@ function formatScore(score) {
   return score > 0 ? `+${score}` : String(score);
 }
 
+function getLeaderboardScoreStyle(score) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return {};
+  if (value < 0) return { color: "#b43b32", fontWeight: 900 };
+  if (value === 0) return { color: "#18864b", fontWeight: 900 };
+  return { color: "inherit", fontWeight: 900 };
+}
+function normalizeTeamScorecard(scorecard = []) {
+  return scorecard.map((hole) => {
+    const par = Number(hole?.par);
+    const netStrokes = Number(hole?.netStrokes ?? hole?.net_strokes);
+    const hasNetResult = Number.isFinite(par) && Number.isFinite(netStrokes);
+    return {
+      ...hole,
+      netStrokes: Number.isFinite(netStrokes) ? netStrokes : hole?.netStrokes,
+      toPar: hasNetResult ? netStrokes - par : hole?.toPar,
+    };
+  });
+}
+function getTeamScoreToPar(team) {
+  const scorecard = normalizeTeamScorecard(team?.scorecard ?? []);
+  const playedHoles = scorecard.filter(
+    (hole) => hole?.netStrokes !== null && hole?.netStrokes !== undefined && Number.isFinite(Number(hole?.par))
+  );
+  if (playedHoles.length > 0) {
+    return playedHoles.reduce(
+      (total, hole) => total + (Number(hole.netStrokes) - Number(hole.par)),
+      0
+    );
+  }
+  const candidates = [team?.scoreToPar, team?.score_to_par, team?.score, team?.bestBallScore];
+  const value = candidates.find((candidate) => candidate !== null && candidate !== undefined && Number.isFinite(Number(candidate)));
+  return value === undefined ? null : Number(value);
+}
 function getInitials(name = "") {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2)
     .map((part) => part[0]?.toUpperCase()).join("") || "TGT";
@@ -2256,7 +2290,7 @@ function Leaderboard({ onOpenLogin }) {
                           <strong>{player.playerName}</strong>
                           <small>HCP {player.handicap ?? "–"} · SPH {getPlayerPlayingHandicap(player, liveData?.round) ?? "–"}</small>
                         </span>
-                        <strong className="tgt-live-mobile-score">
+                        <strong className="tgt-live-mobile-score" style={getLeaderboardScoreStyle(player.holesPlayed === 0 ? 0 : player.scoreToPar)}>
                           {player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}
                         </strong>
                         <strong className="tgt-live-mobile-thru">{player.holesPlayed}</strong>
@@ -2309,7 +2343,7 @@ function Leaderboard({ onOpenLogin }) {
                             <small className="tgt-live-player-meta">HCP {player.handicap ?? "–"} · SPH {getPlayerPlayingHandicap(player, liveData?.round) ?? "–"}</small>
                           </td>
                           <td className="number-column tgt-live-gross-score">{player.holesPlayed === 0 ? "–" : player.grossStrokes}</td>
-                          <td className="number-column final-score tgt-live-to-par">{player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}</td>
+                          <td className="number-column final-score tgt-live-to-par" style={getLeaderboardScoreStyle(player.holesPlayed === 0 ? 0 : player.scoreToPar)}>{player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}</td>
                           <td className="number-column tgt-live-bonus">{player.earnedBonus > 0 ? player.hasCompletedRound ? `-${player.appliedBonus}` : `${player.earnedBonus} afventer` : "–"}</td>
                           <td className="number-column tgt-live-thru">{player.holesPlayed}</td>
                         </tr>
@@ -2349,19 +2383,21 @@ function Leaderboard({ onOpenLogin }) {
                   {teamLeaderboard.map((team, index) => {
                     const teamKey = team.teamId ?? team.id ?? `${team.teamName}-${index}`;
                     const isOpen = selectedTeamId === teamKey;
+                    const teamScoreToPar = getTeamScoreToPar(team);
+                    const teamHolesPlayed = team.holesPlayed ?? team.thru ?? normalizeTeamScorecard(team.scorecard ?? []).filter((hole) => hole.netStrokes !== null && hole.netStrokes !== undefined).length;
                     return (
                       <Fragment key={teamKey}>
                         <tr className={isOpen ? "is-open" : ""} onClick={() => setSelectedTeamId(isOpen ? null : teamKey)} style={{ cursor: "pointer" }}>
                           <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span></td>
                           <td><span className="player-name">{team.teamName ?? team.name ?? "Ukendt hold"}</span><small className="tgt-live-player-meta">Tryk for best ball-scorekort</small></td>
-                          <td className="number-column final-score">{formatScore(team.scoreToPar ?? team.score ?? team.bestBallScore ?? 0)}</td>
-                          <td className="number-column">{team.holesPlayed ?? team.thru ?? 0}</td>
+                          <td className="number-column final-score tgt-live-to-par" style={getLeaderboardScoreStyle(teamScoreToPar ?? 0)}>{teamHolesPlayed === 0 ? "E" : formatScore(teamScoreToPar)}</td>
+                          <td className="number-column tgt-live-thru">{teamHolesPlayed}</td>
                         </tr>
                         {isOpen && (
                           <tr>
                             <td colSpan="4" style={{ padding: 0 }}>
                               <div className="tgt-live-scorecard-detail tgt-team-best-ball-detail">
-                                <SplitScorecard scorecard={team.scorecard ?? []} position={index + 1} />
+                                <SplitScorecard scorecard={normalizeTeamScorecard(team.scorecard ?? [])} position={index + 1} />
                               </div>
                             </td>
                           </tr>

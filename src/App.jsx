@@ -346,6 +346,7 @@ function Leaderboard({ onOpenLogin }) {
   const [directoryPlayerId, setDirectoryPlayerId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [individualFullscreen, setIndividualFullscreen] = useState(false);
+  const [teamFullscreen, setTeamFullscreen] = useState(false);
   const [standings, setStandings] = useState([]);
   const [liveData, setLiveData] = useState(null);
   const [teamData, setTeamData] = useState(null);
@@ -768,14 +769,26 @@ function Leaderboard({ onOpenLogin }) {
     setSelectedPlayerMode(null);
   }
 
+  function openTeamFullscreen() {
+    setMainTab("team");
+    setTab("team");
+    setTeamFullscreen(true);
+    setMenuOpen(false);
+  }
+
+  function closeTeamFullscreen() {
+    setTeamFullscreen(false);
+    setSelectedTeamId(null);
+  }
+
   useEffect(() => {
-    if (!individualFullscreen) return undefined;
+    if (!individualFullscreen && !teamFullscreen) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [individualFullscreen]);
+  }, [individualFullscreen, teamFullscreen]);
 
   const headings = {
     season: {
@@ -832,7 +845,7 @@ function Leaderboard({ onOpenLogin }) {
   const currentHeading = headings[tab];
 
   return (
-    <div className={`app tgt-public-shell${individualFullscreen ? " tgt-individual-fullscreen-open" : ""}`}>
+    <div className={`app tgt-public-shell${individualFullscreen ? " tgt-individual-fullscreen-open" : ""}${teamFullscreen ? " tgt-team-fullscreen-open" : ""}`}>
       <style>{`
         .tgt-public-shell { background: #f3efe6; min-height: 100vh; }
         .tgt-public-topbar { position: relative; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: 14px clamp(18px, 4vw, 54px); background: rgba(7, 43, 31, .96); color: #fff; backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.12); }
@@ -1645,7 +1658,7 @@ function Leaderboard({ onOpenLogin }) {
         </div>
       </section>
 
-      <main className={`main-content${individualFullscreen ? " tgt-individual-fullscreen" : ""}`}>
+      <main className={`main-content${individualFullscreen ? " tgt-individual-fullscreen" : ""}${teamFullscreen ? " tgt-team-fullscreen" : ""}`}>
         {individualFullscreen && (
           <header className="tgt-individual-fullscreen-header">
             <button
@@ -1659,6 +1672,16 @@ function Leaderboard({ onOpenLogin }) {
             </button>
             <strong>Individuelt leaderboard</strong>
             <span className="tgt-individual-header-balance" aria-hidden="true" />
+          </header>
+        )}
+        {teamFullscreen && (
+          <header className="tgt-team-fullscreen-header">
+            <button type="button" className="tgt-team-back-button" onClick={closeTeamFullscreen} aria-label="Tilbage til start">
+              <span aria-hidden="true">‹</span>
+              Tilbage
+            </button>
+            <strong>Holdleaderboard</strong>
+            <span className="tgt-team-header-balance" aria-hidden="true" />
           </header>
         )}
         <section className="leaderboard-card">
@@ -1696,10 +1719,7 @@ function Leaderboard({ onOpenLogin }) {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setMainTab("team");
-                setTab("team");
-              }}
+              onClick={openTeamFullscreen}
               className={
                 mainTab === "team"
                   ? "login-submit-button"

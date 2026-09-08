@@ -6775,7 +6775,13 @@ function MarkerDashboard({
           roundNumber: assignment.rounds.round_number,
         }),
       ]);
-      setMarkerLiveData(individualData);
+      setMarkerLiveData({
+        ...individualData,
+        round: {
+          ...individualData?.round,
+          tee: markerTee ?? individualData?.round?.tee ?? null,
+        },
+      });
       setMarkerTeamData(teamData);
     } catch (error) {
       console.error("Markørens livescore kunne ikke hentes:", error);
@@ -7319,7 +7325,7 @@ function MarkerDashboard({
   return (
     <main className="marker-page tgt-ops-shell">
       <style>{`
-        .tgt-marker-live-panel{position:fixed;inset:0;z-index:1000;overflow:auto;padding:0 0 40px;background:#f3efe6}.tgt-marker-live-header{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;min-height:68px;padding:10px 18px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935);border-bottom:1px solid rgba(240,207,130,.35)}.tgt-marker-live-header strong{text-align:center;font-size:20px}.tgt-marker-live-back,.tgt-marker-live-refresh{min-height:42px;padding:0 14px;border:1px solid rgba(240,207,130,.45);border-radius:999px;color:#f7df99;background:rgba(2,27,20,.48);font-weight:900;cursor:pointer}.tgt-marker-live-back{justify-self:start}.tgt-marker-live-refresh{justify-self:end}.tgt-marker-live-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:720px;margin:20px auto 12px;padding:8px;border-radius:16px;background:#e4eade}.tgt-marker-live-toggle button{min-height:46px;border:0;border-radius:12px;color:#244539;background:transparent;font-weight:900;cursor:pointer}.tgt-marker-live-toggle button.active{color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935)}.tgt-marker-live-table{width:min(960px,calc(100% - 24px));margin:0 auto;border-radius:18px;background:#fff;box-shadow:0 18px 50px rgba(18,48,36,.14)}.tgt-marker-live-table table{width:100%;border-collapse:collapse}.tgt-marker-live-table thead{color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-live-table th{padding:15px 12px;color:#f7df99!important;border-bottom:1px solid rgba(240,207,130,.28);font-size:11px;letter-spacing:.1em;text-transform:uppercase}.tgt-marker-live-table td{padding:15px 12px;border-bottom:1px solid #e5ebe6;background:#fffdf8}.tgt-marker-live-table .player-name{color:#103d2d;font-weight:900}@media(max-width:600px){.tgt-marker-live-header{grid-template-columns:auto 1fr auto;padding:10px}.tgt-marker-live-header strong{font-size:17px}.tgt-marker-live-back,.tgt-marker-live-refresh{padding:0 10px}.tgt-marker-live-toggle{margin:12px}.tgt-marker-live-table{width:calc(100% - 12px)}.tgt-marker-live-table table{min-width:0!important}.tgt-marker-live-table th,.tgt-marker-live-table td{padding:13px 8px}.tgt-marker-live-table .player-name{font-size:14px}}
+        .tgt-marker-live-panel{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;overflow:hidden;background:#f3efe6}.tgt-marker-live-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:max(40px,env(safe-area-inset-bottom,0px));-webkit-overflow-scrolling:touch}.tgt-marker-live-header{position:relative;flex:0 0 auto;z-index:4;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;min-height:68px;padding:10px 18px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935);border-bottom:1px solid rgba(240,207,130,.35)}.tgt-marker-live-header strong{text-align:center;font-size:20px}.tgt-marker-live-back,.tgt-marker-live-refresh{min-height:42px;padding:0 14px;border:1px solid rgba(240,207,130,.45);border-radius:999px;color:#f7df99;background:rgba(2,27,20,.48);font-weight:900;cursor:pointer}.tgt-marker-live-back{justify-self:start}.tgt-marker-live-refresh{justify-self:end}.tgt-marker-live-toggle{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:720px;margin:20px auto 12px;padding:8px;border-radius:16px;background:#e4eade}.tgt-marker-live-toggle button{min-height:46px;border:0;border-radius:12px;color:#244539;background:transparent;font-weight:900;cursor:pointer}.tgt-marker-live-toggle button.active{color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935)}.tgt-marker-live-table{width:min(960px,calc(100% - 24px));margin:0 auto;border-radius:18px;background:#fff;box-shadow:0 18px 50px rgba(18,48,36,.14)}.tgt-marker-live-table table{width:100%;border-collapse:collapse}.tgt-marker-live-table thead{color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-live-table th{padding:15px 12px;color:#f7df99!important;border-bottom:1px solid rgba(240,207,130,.28);font-size:11px;letter-spacing:.1em;text-transform:uppercase}.tgt-marker-live-table td{padding:15px 12px;border-bottom:1px solid #e5ebe6;background:#fffdf8}.tgt-marker-live-table .player-name{display:block;color:#103d2d;font-weight:900}.tgt-marker-live-table .tgt-live-player-meta{display:block;margin-top:3px;color:#718078;font-size:11px}@media(max-width:600px){.tgt-marker-live-header{grid-template-columns:auto 1fr auto;padding:10px}.tgt-marker-live-header strong{font-size:17px}.tgt-marker-live-back,.tgt-marker-live-refresh{padding:0 10px}.tgt-marker-live-toggle{margin:12px}.tgt-marker-live-table{width:calc(100% - 12px)}.tgt-marker-live-table table{min-width:0!important}.tgt-marker-live-table th,.tgt-marker-live-table td{padding:13px 8px}.tgt-marker-live-table .player-name{font-size:14px}}
         .tgt-marker-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:22px;background:#f4f0e6}.tgt-marker-kpi{min-height:118px;padding:18px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;border:1px solid rgba(236,201,115,.48);border-radius:18px;background:linear-gradient(145deg,#052a1f,#0a4935);box-shadow:0 12px 28px rgba(3,31,23,.14)}.tgt-marker-kpi span{color:#cdb46d;font-size:10px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}.tgt-marker-kpi strong{color:#f7df99;font-family:Georgia,serif;font-size:clamp(21px,2.2vw,27px);line-height:1.18}.tgt-marker-progress{grid-column:1/-1;min-height:100px}@media(max-width:700px){.tgt-marker-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}.tgt-marker-kpi{min-height:100px;padding:14px 9px;gap:12px}.tgt-marker-kpi strong{font-size:19px}.tgt-marker-progress{grid-column:1/-1}}@media(max-width:390px){.tgt-marker-kpis{grid-template-columns:1fr}.tgt-marker-progress{grid-column:auto}}
       `}</style>
       <style>{`
@@ -7389,14 +7395,15 @@ function MarkerDashboard({
               <strong>Live score</strong>
               <button type="button" onClick={loadMarkerLiveScore} className="tgt-marker-live-refresh">Opdatér</button>
             </header>
-            <nav className="tgt-marker-live-toggle" aria-label="Vælg livestilling">
-              <button type="button" className={markerLiveView === "individual" ? "active" : ""} onClick={() => setMarkerLiveView("individual")}>Individuel</button>
-              <button type="button" className={markerLiveView === "team" ? "active" : ""} onClick={() => setMarkerLiveView("team")}>Hold</button>
-            </nav>
-            {markerLiveLoading && <div className="status-box">Henter livescore...</div>}
-            {markerLiveError && <div className="error-box">{markerLiveError}</div>}
-            {!markerLiveLoading && !markerLiveError && (
-              <div className="table-wrapper tgt-marker-live-table">
+            <div className="tgt-marker-live-body">
+              <nav className="tgt-marker-live-toggle" aria-label="Vælg livestilling">
+                <button type="button" className={markerLiveView === "individual" ? "active" : ""} onClick={() => setMarkerLiveView("individual")}>Individuel</button>
+                <button type="button" className={markerLiveView === "team" ? "active" : ""} onClick={() => setMarkerLiveView("team")}>Hold</button>
+              </nav>
+              {markerLiveLoading && <div className="status-box">Henter livescore...</div>}
+              {markerLiveError && <div className="error-box">{markerLiveError}</div>}
+              {!markerLiveLoading && !markerLiveError && (
+                <div className="table-wrapper tgt-marker-live-table">
                 <table>
                   <thead>
                     <tr>
@@ -7418,7 +7425,14 @@ function MarkerDashboard({
                       return (
                         <tr key={entry.playerId ?? entry.teamId ?? entry.id ?? index}>
                           <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span></td>
-                          <td><span className="player-name">{isIndividual ? entry.playerName : entry.teamName ?? entry.name ?? "Ukendt hold"}</span></td>
+                          <td>
+                            <span className="player-name">{isIndividual ? entry.playerName : entry.teamName ?? entry.name ?? "Ukendt hold"}</span>
+                            {isIndividual && (
+                              <small className="tgt-live-player-meta">
+                                HCP {entry.handicapIndex ?? entry.handicap ?? "–"} · SPH {getPlayerPlayingHandicap(entry, markerLiveData?.round) ?? "–"}
+                              </small>
+                            )}
+                          </td>
                           <td className="number-column tgt-live-to-par" style={getLeaderboardScoreStyle(holesPlayed === 0 ? 0 : score)}>{holesPlayed === 0 ? "E" : formatScore(score)}</td>
                           <td className="number-column tgt-live-thru">{holesPlayed}</td>
                         </tr>
@@ -7429,8 +7443,9 @@ function MarkerDashboard({
                 {(markerLiveView === "individual" ? markerIndividualLeaderboard : markerTeamLeaderboard).length === 0 && (
                   <div className="status-box">Der er endnu ingen livescore.</div>
                 )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </section>
         )}
 

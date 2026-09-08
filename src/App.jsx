@@ -305,8 +305,18 @@ function ClosestToPinHoleSelector({ roundId, courseId, disabled = false }) {
         setErrorMessage((holesResult.error ?? selectedResult.error).message);
         return;
       }
-      setHoles(holesResult.data ?? []);
-      setSelected((selectedResult.data ?? []).map((row) => Number(row.hole_number)));
+      const parThreeHoles = (holesResult.data ?? []).filter(
+        (hole) => Number(hole.par) === 3
+      );
+      const savedHoleNumbers = (selectedResult.data ?? []).map((row) =>
+        Number(row.hole_number)
+      );
+      setHoles(parThreeHoles);
+      setSelected(
+        savedHoleNumbers.length > 0
+          ? savedHoleNumbers
+          : parThreeHoles.map((hole) => Number(hole.hole_number))
+      );
     }
     load();
     return () => { active = false; };
@@ -331,7 +341,7 @@ function ClosestToPinHoleSelector({ roundId, courseId, disabled = false }) {
   if (!courseId) return null;
   return (
     <section className="tgt-closest-hole-selector">
-      <div><strong>Tættest på pinden-huller</strong><small>Vælg kun de huller, der skal være med i konkurrencen.</small></div>
+      <div><strong>Tættest på pinden-huller</strong><small>Alle banens par 3-huller er valgt automatisk. Fjern kun et hul, hvis det ikke skal tælle med.</small></div>
       <div className="tgt-closest-hole-grid">
         {holes.map((hole) => (
           <label key={hole.hole_number} className={selected.includes(Number(hole.hole_number)) ? "selected" : ""}>
@@ -3724,9 +3734,37 @@ function SeasonRoundsAdmin({ season = 2027 }) {
         teamEnabled: newRound.teamEnabled,
         closestToPinEnabled: newRound.closestToPinEnabled,
       });
+
+      if (newRound.closestToPinEnabled && newRound.courseId) {
+        const { data: parThreeRows, error: parThreeError } = await supabase
+          .from("course_holes")
+          .select("hole_number")
+          .eq("course_id", newRound.courseId)
+          .eq("par", 3)
+          .order("hole_number", { ascending: true });
+        if (parThreeError) throw parThreeError;
+
+        const { error: closestHoleError } = await supabase.rpc(
+          "set_round_closest_to_pin_holes",
+          {
+            requested_round_id: created.id,
+            requested_hole_numbers: (parThreeRows ?? []).map((hole) =>
+              Number(hole.hole_number)
+            ),
+          }
+        );
+        if (closestHoleError) throw closestHoleError;
+      }
+
       setNewRound(emptyRound);
       setNewRoundTees([]);
-      setMessage(`Runde ${created.round_number} er oprettet.`);
+      setMessage(
+        `Runde ${created.round_number} er oprettet${
+          newRound.closestToPinEnabled
+            ? " med alle banens par 3-huller til Tættest på pinden"
+            : ""
+        }.`
+      );
       await loadRounds();
     } catch (error) {
       console.error("Fejl ved oprettelse af runde:", error);

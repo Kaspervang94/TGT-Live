@@ -6928,24 +6928,96 @@ function MarkerDashboard({
   const [markerTeamData, setMarkerTeamData] = useState(null);
   const [markerLiveLoading, setMarkerLiveLoading] = useState(false);
   const [markerLiveError, setMarkerLiveError] = useState("");
-
+  const [markerIndividualTopFive, setMarkerIndividualTopFive] = useState([]);
+  const [markerTeamTopFive, setMarkerTeamTopFive] = useState([]);
   async function loadMarkerLiveScore() {
     if (!assignment?.round_id || !assignment?.rounds?.round_number) return;
     setMarkerLiveLoading(true);
     setMarkerLiveError("");
     try {
-      const [individualData, teamData] = await Promise.all([
-        getLiveRoundLeaderboard({
-          season: 2026,
-          roundId: assignment.round_id,
-        }),
-        getTeamLeaderboard({
-          season: 2026,
-          roundNumber: assignment.rounds.round_number,
-        }),
+      const season = Number(assignment.rounds?.tournaments?.season ?? 2026);
+      const mode = assignment.rounds?.live_leaderboard_mode ?? "none";
+      const { data: seasonRounds, error: seasonRoundsError } = await supabase
+        .from("rounds")
+        .select("id, round_number, round_type")
+        .eq("tournament_id", assignment.rounds.tournament_id)
+        .order("round_number", { ascending: true });
+      if (seasonRoundsError) throw seasonRoundsError;
+      const teamFinalRound = (seasonRounds ?? []).find((round) => round.round_type === "team_final");
+      const individualFinalRound = (seasonRounds ?? []).find((round) => round.round_type === "individual_final");
+      const [individualData, teamData, seasonStandingsResult, teamHistoryResult] = await Promise.all([
+        getLiveRoundLeaderboard({ season, roundId: assignment.round_id }),
+        getTeamLeaderboard({ season, roundNumber: assignment.rounds.round_number }),
+        supabase
+          .from("season_individual_standings")
+          .select("player_id, player_name, counting_score")
+          .eq("season", season),
+        supabase
+          .from("team_round_results")
+          .select(`team_id, round_number, score, teams (name), tournaments!inner (season)`)
+          .eq("tournaments.season", season)
+          .not("score", "is", null),
       ]);
+      if (seasonStandingsResult.error) throw seasonStandingsResult.error;
+      if (teamHistoryResult.error) throw teamHistoryResult.error;
       setMarkerLiveData(individualData);
       setMarkerTeamData(teamData);
+
+      let individualTopFive = sortStandings(seasonStandingsResult.data ?? []).slice(0, 5).map((player) => ({
+        id: player.player_id,
+        name: player.player_name,
+        score: player.counting_score,
+        holesPlayed: 0,
+      }));
+      if (["individual", "both"].includes(mode) && teamFinalRound && individualFinalRound) {
+        const finalData = await getFinalStandings({
+          season,
+          roundSixNumber: teamFinalRound.round_number,
+          roundSevenNumber: individualFinalRound.round_number,
+        });
+        individualTopFive = [...(finalData?.standings ?? [])]
+          .map((player) => ({
+            id: player.playerId,
+            name: player.playerName,
+            score: player.finalScore ?? player.startingScore,
+            holesPlayed:
+              assignment.rounds.round_type === "individual_final"
+                ? player.roundSevenHoles
+                : player.roundSixHoles,
+          }))
+          .sort((a, b) => Number(a.score ?? Infinity) - Number(b.score ?? Infinity) || a.name.localeCompare(b.name, "da"))
+          .slice(0, 5);
+      }
+
+      const historyByTeam = {};
+      (teamHistoryResult.data ?? []).forEach((result) => {
+        historyByTeam[result.team_id] ??= {
+          id: result.team_id,
+          name: result.teams?.name ?? "Ukendt hold",
+          rounds: [],
+        };
+        historyByTeam[result.team_id].rounds.push(Number(result.score));
+      });
+      const liveTeamById = new Map(
+        (teamData?.leaderboard ?? []).map((team) => [team.teamId ?? team.id, team])
+      );
+      const teamTopFive = Object.values(historyByTeam)
+        .map((team) => {
+          const bestFour = [...team.rounds].sort((a, b) => a - b).slice(0, 4);
+          const startingScore = Math.trunc(bestFour.reduce((total, score) => total + score, 0) / 2);
+          const liveTeam = liveTeamById.get(team.id);
+          const liveScore = getTeamScoreToPar(liveTeam);
+          const holesPlayed = liveTeam?.holesPlayed ?? liveTeam?.thru ?? 0;
+          return {
+            ...team,
+            score: startingScore + (holesPlayed > 0 && liveScore !== null ? Number(liveScore) : 0),
+            holesPlayed,
+          };
+        })
+        .sort((a, b) => a.score - b.score || a.name.localeCompare(b.name, "da"))
+        .slice(0, 5);
+      setMarkerIndividualTopFive(individualTopFive);
+      setMarkerTeamTopFive(teamTopFive);
     } catch (error) {
       console.error("Markørens livescore kunne ikke hentes:", error);
       setMarkerLiveError(error.message ?? "Livescoren kunne ikke hentes.");
@@ -6953,7 +7025,6 @@ function MarkerDashboard({
       setMarkerLiveLoading(false);
     }
   }
-
   async function loadScores(
     roundId,
     loadedPlayers
@@ -7035,6 +7106,8 @@ function MarkerDashboard({
             round_id,
             rounds (
               id,
+              tournament_id,
+              tournaments ( season ),
               round_number,
               name,
               played_at,
@@ -7302,7 +7375,9 @@ function MarkerDashboard({
           : `Hul ${selectedHole} er gemt for hele bolden.`
       );
       await loadScores(assignment.round_id, players);
-
+      if (assignment.rounds?.live_leaderboard_mode !== "none") {
+        await loadMarkerLiveScore();
+      }
       if (
         scoresToDelete.length === 0 &&
         scoresToSave.length === players.length &&
@@ -7452,7 +7527,7 @@ function MarkerDashboard({
   }
 
   useEffect(() => {
-    if (!markerLiveOpen || !assignment?.round_id) return undefined;
+    if (!assignment?.round_id || assignment.rounds?.live_leaderboard_mode === "none") return undefined;
     loadMarkerLiveScore();
     const channel = supabase
       .channel(`tgt-marker-live-${assignment.round_id}`)
@@ -7465,11 +7540,28 @@ function MarkerDashboard({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [markerLiveOpen, assignment?.round_id, assignment?.rounds?.round_number]);
+  }, [assignment?.round_id, assignment?.rounds?.round_number, assignment?.rounds?.live_leaderboard_mode]);
 
   const markerIndividualLeaderboard = markerLiveData?.leaderboard ?? [];
   const markerTeamLeaderboard = markerTeamData?.leaderboard ?? [];
-
+  function MarkerTopFiveCard({ title, entries }) {
+    return (
+      <section className="tgt-marker-top-five-card">
+        <header><span className="live-dot" /><strong>{title}</strong><small>TOP 5</small></header>
+        <div>
+          {entries.map((entry, index) => (
+            <div className="tgt-marker-top-five-row" key={entry.id ?? `${entry.name}-${index}`}>
+              <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
+              <strong>{entry.name}</strong>
+              <span>{formatScore(entry.score)}</span>
+              <small>{entry.holesPlayed ?? 0}/18</small>
+            </div>
+          ))}
+          {entries.length === 0 && <p>Afventer live scores</p>}
+        </div>
+      </section>
+    );
+  }
   const completedHoles = holes.filter(
     (hole) =>
       players.length > 0 &&
@@ -7489,6 +7581,7 @@ function MarkerDashboard({
   return (
     <main className="marker-page tgt-ops-shell">
       <style>{`
+        .tgt-marker-top-five-wrap{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;padding:10px 12px;background:rgba(243,239,230,.94);backdrop-filter:blur(12px);border-bottom:1px solid rgba(25,65,48,.14);box-shadow:0 12px 28px rgba(18,48,36,.12)}.tgt-marker-top-five-card{overflow:hidden;border:1px solid rgba(240,207,130,.46);border-radius:16px;background:#fffdf8;box-shadow:0 8px 22px rgba(3,31,23,.10)}.tgt-marker-top-five-card>header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:10px 12px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-top-five-card>header strong{font-size:12px;letter-spacing:.08em}.tgt-marker-top-five-card>header small{color:#cdb46d;font-size:9px;font-weight:900}.tgt-marker-top-five-card>div{padding:5px 9px}.tgt-marker-top-five-row{display:grid;grid-template-columns:32px minmax(0,1fr) 45px 42px;align-items:center;gap:8px;min-height:38px;border-bottom:1px solid #e7ece8}.tgt-marker-top-five-row:last-child{border-bottom:0}.tgt-marker-top-five-row .position-badge{width:25px;height:25px;min-width:25px;font-size:11px}.tgt-marker-top-five-row>strong{overflow:hidden;color:#173d2e;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.tgt-marker-top-five-row>span:nth-last-child(2){color:#a57525;font-weight:900;text-align:right}.tgt-marker-top-five-row>small{color:#78827d;font-size:10px;font-weight:800;text-align:right}.tgt-marker-top-five-card p{margin:8px;color:#78827d;text-align:center}@media(max-width:600px){.tgt-marker-top-five-wrap{grid-template-columns:1fr;padding:7px;top:0}.tgt-marker-top-five-card>header{padding:8px 10px}.tgt-marker-top-five-card>div{padding:3px 8px}.tgt-marker-top-five-row{min-height:34px}.tgt-marker-top-five-row>strong{font-size:12px}}
         .tgt-marker-live-panel{position:fixed;inset:0;z-index:1000;overflow:auto;padding:0 0 40px;background:#f3efe6}.tgt-marker-live-header{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;min-height:68px;padding:10px 18px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935);border-bottom:1px solid rgba(240,207,130,.35)}.tgt-marker-live-header strong{text-align:center;font-size:20px}.tgt-marker-live-back,.tgt-marker-live-refresh{min-height:42px;padding:0 14px;border:1px solid rgba(240,207,130,.45);border-radius:999px;color:#f7df99;background:rgba(2,27,20,.48);font-weight:900;cursor:pointer}.tgt-marker-live-back{justify-self:start}.tgt-marker-live-refresh{justify-self:end}.tgt-marker-live-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:720px;margin:20px auto 12px;padding:8px;border-radius:16px;background:#e4eade}.tgt-marker-live-toggle button{min-height:46px;border:0;border-radius:12px;color:#244539;background:transparent;font-weight:900;cursor:pointer}.tgt-marker-live-toggle button.active{color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935)}.tgt-marker-live-table{width:min(960px,calc(100% - 24px));margin:0 auto;border-radius:18px;background:#fff;box-shadow:0 18px 50px rgba(18,48,36,.14)}.tgt-marker-live-table table{width:100%;border-collapse:collapse}.tgt-marker-live-table thead{color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-live-table th{padding:15px 12px;color:#f7df99!important;border-bottom:1px solid rgba(240,207,130,.28);font-size:11px;letter-spacing:.1em;text-transform:uppercase}.tgt-marker-live-table td{padding:15px 12px;border-bottom:1px solid #e5ebe6;background:#fffdf8}.tgt-marker-live-table .player-name{color:#103d2d;font-weight:900}@media(max-width:600px){.tgt-marker-live-header{grid-template-columns:auto 1fr auto;padding:10px}.tgt-marker-live-header strong{font-size:17px}.tgt-marker-live-back,.tgt-marker-live-refresh{padding:0 10px}.tgt-marker-live-toggle{margin:12px}.tgt-marker-live-table{width:calc(100% - 12px)}.tgt-marker-live-table table{min-width:0!important}.tgt-marker-live-table th,.tgt-marker-live-table td{padding:13px 8px}.tgt-marker-live-table .player-name{font-size:14px}}
         .tgt-marker-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:22px;background:#f4f0e6}.tgt-marker-kpi{min-height:118px;padding:18px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;border:1px solid rgba(236,201,115,.48);border-radius:18px;background:linear-gradient(145deg,#052a1f,#0a4935);box-shadow:0 12px 28px rgba(3,31,23,.14)}.tgt-marker-kpi span{color:#cdb46d;font-size:10px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}.tgt-marker-kpi strong{color:#f7df99;font-family:Georgia,serif;font-size:clamp(21px,2.2vw,27px);line-height:1.18}.tgt-marker-progress{grid-column:1/-1;min-height:100px}@media(max-width:700px){.tgt-marker-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}.tgt-marker-kpi{min-height:100px;padding:14px 9px;gap:12px}.tgt-marker-kpi strong{font-size:19px}.tgt-marker-progress{grid-column:1/-1}}@media(max-width:390px){.tgt-marker-kpis{grid-template-columns:1fr}.tgt-marker-progress{grid-column:auto}}
       `}</style>
@@ -7536,7 +7629,12 @@ function MarkerDashboard({
             {assignment && (
               <button
                 type="button"
-                onClick={() => setMarkerLiveOpen(true)}
+                onClick={() => {
+                  setMarkerLiveView(
+                    assignment.rounds?.live_leaderboard_mode === "team" ? "team" : "individual"
+                  );
+                  setMarkerLiveOpen(true);
+                }}
                 className="logout-button"
               >
                 Se livescore
@@ -7552,6 +7650,16 @@ function MarkerDashboard({
           </div>
         </div>
 
+        {assignment && assignment.rounds?.live_leaderboard_mode !== "none" && (
+          <aside className="tgt-marker-top-five-wrap" aria-label="Samlet live leaderboard top 5">
+            {["individual", "both"].includes(assignment.rounds.live_leaderboard_mode) && (
+              <MarkerTopFiveCard title="INDIVIDUEL LIVE" entries={markerIndividualTopFive} />
+            )}
+            {["team", "both"].includes(assignment.rounds.live_leaderboard_mode) && (
+              <MarkerTopFiveCard title="HOLD LIVE" entries={markerTeamTopFive} />
+            )}
+          </aside>
+        )}
         {markerLiveOpen && (
           <section className="tgt-marker-live-panel" role="dialog" aria-modal="true" aria-label="Livescore">
             <header className="tgt-marker-live-header">

@@ -103,7 +103,7 @@ function PositionMovement({ value = 0 }) {
   const movement = Number(value) || 0;
   if (movement > 0) return <span className="tgt-position-movement up" title={`Steget ${movement} placering${movement === 1 ? "" : "er"}`}>▲{movement}</span>;
   if (movement < 0) return <span className="tgt-position-movement down" title={`Faldet ${Math.abs(movement)} placering${Math.abs(movement) === 1 ? "" : "er"}`}>▼{Math.abs(movement)}</span>;
-  return <span className="tgt-position-movement same" title="Uændret placering">●</span>;
+  return null;
 }
 function formatScore(score) {
   if (score === null || score === undefined) {
@@ -952,9 +952,11 @@ function Leaderboard({ onOpenLogin }) {
           {entries.map((entry, index) => (
             <div className="tgt-public-live-top-five-row" key={entry.id ?? `${entry.name}-${index}`}>
               <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
-              <PositionMovement value={entry.movement} />
               <strong>{entry.name}</strong>
-              <span>{formatScore(entry.score)}</span>
+              <span className="tgt-score-with-movement">
+                <span>{formatScore(entry.score)}</span>
+                <PositionMovement value={entry.movement} />
+              </span>
               <small>{entry.holesPlayed}/18</small>
             </div>
           ))}
@@ -1435,13 +1437,14 @@ function Leaderboard({ onOpenLogin }) {
         .tgt-position-movement { display:inline-flex; align-items:center; justify-content:center; min-width:28px; padding:3px 5px; border-radius:999px; font-size:10px; font-weight:900; line-height:1; transition:color .2s ease, background .2s ease, transform .2s ease; }
         .tgt-position-movement.up { color:#126d3e; background:#e4f5e9; }
         .tgt-position-movement.down { color:#9d2f29; background:#fde9e7; }
-        .tgt-position-movement.same { min-width:22px; color:#87948d; background:#eef1ef; font-size:7px; }
+        .tgt-score-with-movement { display:inline-flex; align-items:center; justify-content:flex-end; gap:5px; min-width:0; }
+        .tgt-score-with-movement > span:first-child { font-weight:900; }
         .tgt-public-live-top-five { position: sticky; top: 0; z-index: 24; width: min(760px, calc(100% - 24px)); margin: 12px auto; overflow: hidden; border: 1px solid rgba(240,207,130,.48); border-radius: 18px; background: #fffdf8; box-shadow: 0 14px 34px rgba(18,48,36,.15); }
         .tgt-public-live-top-five > header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 11px 14px; color: #f7df99; background: linear-gradient(135deg,#04251b,#0a4935); }
         .tgt-public-live-top-five > header strong { font-size: 12px; letter-spacing: .08em; }
         .tgt-public-live-top-five > header small { color: #cdb46d; font-size: 9px; font-weight: 900; }
         .tgt-public-live-top-five-list { padding: 5px 10px; }
-        .tgt-public-live-top-five-row { display: grid; grid-template-columns: 34px 30px minmax(0,1fr) 48px 44px; align-items: center; gap: 9px; min-height: 40px; border-bottom: 1px solid #e7ece8; }
+        .tgt-public-live-top-five-row { display: grid; grid-template-columns: 34px minmax(0,1fr) 70px 44px; align-items: center; gap: 9px; min-height: 40px; border-bottom: 1px solid #e7ece8; }
         .tgt-public-live-top-five-row:last-child { border-bottom: 0; }
         .tgt-public-live-top-five-row .position-badge { width: 26px; height: 26px; min-width: 26px; font-size: 11px; }
         .tgt-public-live-top-five-row > strong { overflow: hidden; color: #173d2e; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
@@ -1892,6 +1895,22 @@ function Leaderboard({ onOpenLogin }) {
           }
         }
 
+
+        /* Final clean mobile live layout: no neutral dots and movement stays by the score */
+        @media(max-width:700px){
+          .tgt-live-mobile-player{grid-template-columns:38px minmax(0,1fr) 76px 38px!important;gap:7px!important;position:relative}
+          .tgt-live-mobile-score-wrap{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}
+          .tgt-live-mobile-score-wrap .tgt-position-movement{flex:0 0 auto;min-width:22px;padding:3px 4px;font-size:8px}
+          .tgt-live-mobile-name strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+          .tgt-live-mobile-name small{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+          .tgt-public-live-top-five-row{grid-template-columns:28px minmax(0,1fr) 68px 34px!important;gap:6px!important}
+          .tgt-public-live-top-five-row>.tgt-score-with-movement{justify-self:end;width:100%}
+          .tgt-public-live-top-five-row>.tgt-score-with-movement .tgt-position-movement{min-width:22px;padding:2px 3px;font-size:8px}
+          .tgt-marker-top-five-row{grid-template-columns:30px minmax(0,1fr) 66px 36px!important;gap:6px!important}
+          .tgt-marker-top-five-row>.tgt-score-with-movement{justify-self:end;width:100%}
+          .tgt-marker-top-five-row>.tgt-score-with-movement .tgt-position-movement{min-width:22px;padding:2px 3px;font-size:8px}
+          .tgt-position-movement{box-sizing:border-box}
+        }
         .tgt-course-database { width:min(1120px,100%); margin:0 auto 24px; padding:clamp(18px,3vw,28px); border:1px solid rgba(25,65,48,.12); border-radius:22px; background:#fffdf8; box-shadow:0 14px 38px rgba(18,48,36,.08); }
         .tgt-course-db-header { display:flex; align-items:center; justify-content:space-between; gap:20px; text-align:left; }
         .tgt-course-db-header h2,.tgt-course-db-header p { margin-top:4px; }
@@ -1905,36 +1924,6 @@ function Leaderboard({ onOpenLogin }) {
         .tgt-hole-editor{margin-top:14px}.tgt-hole-editor-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.tgt-hole-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:14px 0}.tgt-hole-grid label{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:10px;border-radius:12px;background:#fff;border:1px solid rgba(25,65,48,.11);text-align:center}.tgt-hole-grid label>span{grid-column:1/-1;font-weight:900;color:#174332}.tgt-hole-grid input{width:100%;min-width:0;padding:8px;border:1px solid #d8e0da;border-radius:8px;text-align:center}.tgt-hole-grid small{color:#6a7b73;font-size:9px;text-transform:uppercase}.tgt-csv-import{margin-top:14px;text-align:center}.tgt-csv-import input{display:block;margin:14px auto}.tgt-csv-import button{max-width:320px}
         @media(max-width:820px){.tgt-course-db-layout{grid-template-columns:1fr}.tgt-course-list{max-height:280px}.tgt-hole-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
         @media(max-width:520px){.tgt-course-database{padding:14px}.tgt-course-db-header{align-items:stretch;flex-direction:column;text-align:center}.tgt-course-db-count{width:100%}.tgt-tee-form{grid-template-columns:1fr}.tgt-hole-editor-head{align-items:stretch;flex-direction:column}.tgt-hole-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-        /* Mobile live leaderboards: compact cards without horizontal scrolling */
-        .tgt-live-team-mobile-list{display:none}
-        @media(max-width:700px){
-          .tgt-live-gamebook,.tgt-live-team-leaderboard{overflow:visible!important;width:100%!important;margin:0!important;padding:0 6px 14px!important;background:transparent!important}
-          .tgt-live-gamebook .tgt-live-desktop-table,.tgt-live-team-leaderboard .tgt-live-team-desktop-table{display:none!important}
-          .tgt-live-gamebook .tgt-live-mobile-list,.tgt-live-team-mobile-list{display:grid!important;gap:8px;width:100%;min-width:0;padding:0}
-          .tgt-live-mobile-head,.tgt-live-team-mobile-head{display:grid!important;grid-template-columns:52px minmax(0,1fr) 58px 42px;gap:7px;align-items:center;padding:8px 10px;color:#6f7d75;font-size:9px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
-          .tgt-live-mobile-card,.tgt-live-team-mobile-card{overflow:hidden;width:100%;min-width:0;border:1px solid rgba(25,65,48,.12);border-radius:14px;background:#fffdf8;box-shadow:0 6px 18px rgba(18,48,36,.08)}
-          .tgt-live-mobile-player,.tgt-live-team-mobile-row{display:grid!important;grid-template-columns:52px minmax(0,1fr) 58px 42px!important;gap:7px!important;align-items:center;width:100%;min-width:0;min-height:64px;padding:9px 10px!important;border:0;background:transparent;color:#163c2d;text-align:left}
-          .tgt-live-mobile-player>.position-badge{grid-column:1;grid-row:1;margin-left:0}
-          .tgt-live-mobile-player>.tgt-position-movement{grid-column:1;grid-row:1;align-self:end;justify-self:end;min-width:21px;padding:2px 4px;transform:translate(4px,7px);font-size:8px}
-          .tgt-live-mobile-name,.tgt-live-team-mobile-name{display:block;min-width:0;overflow:hidden}
-          .tgt-live-mobile-name strong,.tgt-live-team-mobile-name strong{display:block;overflow:hidden;color:#103d2d;font-size:13px;line-height:1.15;text-overflow:ellipsis;white-space:nowrap}
-          .tgt-live-mobile-name small,.tgt-live-team-mobile-name small{display:block;overflow:hidden;margin-top:4px;color:#78827d;font-size:9px;text-overflow:ellipsis;white-space:nowrap}
-          .tgt-live-mobile-score,.tgt-live-team-mobile-score{font-size:16px;text-align:right}
-          .tgt-live-mobile-thru,.tgt-live-team-mobile-thru{color:#46665a;font-size:13px;text-align:right}
-          .tgt-mobile-position-stack{position:relative;display:flex;align-items:center;justify-content:flex-start;width:48px;min-height:38px}
-          .tgt-mobile-position-stack>.tgt-position-movement{position:absolute;right:-1px;bottom:-1px;min-width:21px;padding:2px 4px;font-size:8px}
-          .tgt-live-mobile-scorecard,.tgt-live-team-mobile-scorecard{overflow-x:auto;padding:8px;background:#f2f5f1;border-top:1px solid #e0e7e2;-webkit-overflow-scrolling:touch}
-          .tgt-live-mobile-scorecard .tgt-desktop-detailed-scorecard,.tgt-live-team-mobile-scorecard .tgt-desktop-detailed-scorecard{display:none!important}
-          .tgt-live-mobile-scorecard .tgt-gb-mobile-card,.tgt-live-team-mobile-scorecard .tgt-gb-mobile-card{display:block!important;min-width:560px}
-          .tgt-public-live-top-five{position:relative!important;top:auto!important;width:100%!important;margin:0 0 10px!important;border-radius:14px!important}
-          .tgt-public-live-top-five-row{grid-template-columns:28px 25px minmax(0,1fr) 40px 35px!important;gap:5px!important;min-height:35px!important;padding:0 2px}
-          .tgt-public-live-top-five-row .position-badge{width:23px!important;height:23px!important;min-width:23px!important;font-size:10px!important}
-          .tgt-public-live-top-five-row>.tgt-position-movement{min-width:22px;padding:2px 3px;font-size:8px}
-          .tgt-public-live-top-five-row>strong{font-size:11px!important}
-          .tgt-public-live-top-five-row>small{font-size:9px!important}
-          .tgt-live-fullscreen .leaderboard-card{width:100%!important;border-radius:0!important}
-          .tgt-live-fullscreen .card-header{padding:16px 12px!important}
-        }
       `}</style>
 
       <header className="tgt-public-topbar">
@@ -2526,14 +2515,16 @@ function Leaderboard({ onOpenLogin }) {
                         }}
                       >
                         <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
-                        <PositionMovement value={roundIndividualMovements[String(player.playerId)] ?? 0} />
                         <span className="tgt-live-mobile-name">
                           <strong>{player.playerName}</strong>
                           <small>HCP {player.handicap ?? "–"} · SPH {getPlayerPlayingHandicap(player, liveData?.round) ?? "–"}</small>
                         </span>
-                        <strong className="tgt-live-mobile-score" style={getLeaderboardScoreStyle(player.holesPlayed === 0 ? 0 : player.scoreToPar)}>
-                          {player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}
-                        </strong>
+                        <span className="tgt-live-mobile-score-wrap">
+                          <strong className="tgt-live-mobile-score" style={getLeaderboardScoreStyle(player.holesPlayed === 0 ? 0 : player.scoreToPar)}>
+                            {player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}
+                          </strong>
+                          <PositionMovement value={roundIndividualMovements[String(player.playerId)] ?? 0} />
+                        </span>
                         <strong className="tgt-live-mobile-thru">{player.holesPlayed}</strong>
                       </button>
                       {isOpen && (
@@ -2617,32 +2608,7 @@ function Leaderboard({ onOpenLogin }) {
                 <PublicLiveTopFive type="team" />
               )}
               <div className="table-wrapper tgt-live-team-leaderboard">
-              <div className="tgt-live-team-mobile-list">
-                <div className="tgt-live-team-mobile-head">
-                  <span>#</span><span>Hold</span><span>Score</span><span>Thru</span>
-                </div>
-                {teamLeaderboard.map((team, index) => {
-                  const teamKey = team.teamId ?? team.id ?? `${team.teamName}-${index}`;
-                  const isOpen = selectedTeamId === teamKey;
-                  const teamScoreToPar = getTeamScoreToPar(team);
-                  const teamHolesPlayed = team.holesPlayed ?? team.thru ?? normalizeTeamScorecard(team.scorecard ?? []).filter((hole) => hole.netStrokes !== null && hole.netStrokes !== undefined).length;
-                  return (
-                    <article key={`team-mobile-${teamKey}`} className={`tgt-live-team-mobile-card${isOpen ? " is-open" : ""}`}>
-                      <button type="button" className="tgt-live-team-mobile-row" onClick={() => setSelectedTeamId(isOpen ? null : teamKey)}>
-                        <span className="tgt-mobile-position-stack">
-                          <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
-                          <PositionMovement value={roundTeamMovements[String(team.teamId ?? team.id)] ?? 0} />
-                        </span>
-                        <span className="tgt-live-team-mobile-name"><strong>{team.teamName ?? team.name ?? "Ukendt hold"}</strong><small>Tryk for best ball-scorekort</small></span>
-                        <strong className="tgt-live-team-mobile-score" style={getLeaderboardScoreStyle(teamScoreToPar ?? 0)}>{teamHolesPlayed === 0 ? "E" : formatScore(teamScoreToPar)}</strong>
-                        <strong className="tgt-live-team-mobile-thru">{teamHolesPlayed}</strong>
-                      </button>
-                      {isOpen && <div className="tgt-live-team-mobile-scorecard"><SplitScorecard scorecard={normalizeTeamScorecard(team.scorecard ?? [])} position={index + 1} /></div>}
-                    </article>
-                  );
-                })}
-              </div>
-              <table className="tgt-live-team-desktop-table">
+              <table>
                 <thead>
                   <tr>
                     <th className="position-column">#</th>
@@ -7741,9 +7707,11 @@ function MarkerDashboard({
           {entries.map((entry, index) => (
             <div className="tgt-marker-top-five-row" key={entry.id ?? `${entry.name}-${index}`}>
               <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
-              <PositionMovement value={movements[String(entry.id)] ?? 0} />
               <strong>{entry.name}</strong>
-              <span>{formatScore(entry.score)}</span>
+              <span className="tgt-score-with-movement">
+                <span>{formatScore(entry.score)}</span>
+                <PositionMovement value={movements[String(entry.id)] ?? 0} />
+              </span>
               <small>{entry.holesPlayed ?? 0}/18</small>
             </div>
           ))}
@@ -7771,7 +7739,7 @@ function MarkerDashboard({
   return (
     <main className="marker-page tgt-ops-shell">
       <style>{`
-        .tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{position:-webkit-sticky;position:sticky;top:max(0px,env(safe-area-inset-top));z-index:60;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;padding:10px 12px;background:rgba(243,239,230,.94);backdrop-filter:blur(12px);border-bottom:1px solid rgba(25,65,48,.14);box-shadow:0 12px 28px rgba(18,48,36,.12)}.tgt-marker-top-five-card{overflow:hidden;border:1px solid rgba(240,207,130,.46);border-radius:16px;background:#fffdf8;box-shadow:0 8px 22px rgba(3,31,23,.10)}.tgt-marker-top-five-card>header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:10px 12px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-top-five-card>header strong{font-size:12px;letter-spacing:.08em}.tgt-marker-top-five-card>header small{color:#cdb46d;font-size:9px;font-weight:900}.tgt-marker-top-five-card>div{padding:5px 9px}.tgt-marker-top-five-row{display:grid;grid-template-columns:32px 28px minmax(0,1fr) 45px 42px;align-items:center;gap:8px;min-height:38px;border-bottom:1px solid #e7ece8}.tgt-marker-top-five-row:last-child{border-bottom:0}.tgt-marker-top-five-row .position-badge{width:25px;height:25px;min-width:25px;font-size:11px}.tgt-marker-top-five-row>strong{overflow:hidden;color:#173d2e;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.tgt-marker-top-five-row>span:nth-last-child(2){color:#a57525;font-weight:900;text-align:right}.tgt-marker-top-five-row>small{color:#78827d;font-size:10px;font-weight:800;text-align:right}.tgt-marker-top-five-card p{margin:8px;color:#78827d;text-align:center}@media(max-width:600px){.tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{grid-template-columns:1fr;padding:7px;top:env(safe-area-inset-top);transform:translateZ(0);will-change:transform}.tgt-marker-top-five-card>header{padding:8px 10px}.tgt-marker-top-five-card>div{padding:3px 8px}.tgt-marker-top-five-row{min-height:34px}.tgt-marker-top-five-row>strong{font-size:12px}}
+        .tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{position:-webkit-sticky;position:sticky;top:max(0px,env(safe-area-inset-top));z-index:60;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;padding:10px 12px;background:rgba(243,239,230,.94);backdrop-filter:blur(12px);border-bottom:1px solid rgba(25,65,48,.14);box-shadow:0 12px 28px rgba(18,48,36,.12)}.tgt-marker-top-five-card{overflow:hidden;border:1px solid rgba(240,207,130,.46);border-radius:16px;background:#fffdf8;box-shadow:0 8px 22px rgba(3,31,23,.10)}.tgt-marker-top-five-card>header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:10px 12px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-top-five-card>header strong{font-size:12px;letter-spacing:.08em}.tgt-marker-top-five-card>header small{color:#cdb46d;font-size:9px;font-weight:900}.tgt-marker-top-five-card>div{padding:5px 9px}.tgt-marker-top-five-row{display:grid;grid-template-columns:32px minmax(0,1fr) 68px 42px;align-items:center;gap:8px;min-height:38px;border-bottom:1px solid #e7ece8}.tgt-marker-top-five-row:last-child{border-bottom:0}.tgt-marker-top-five-row .position-badge{width:25px;height:25px;min-width:25px;font-size:11px}.tgt-marker-top-five-row>strong{overflow:hidden;color:#173d2e;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.tgt-marker-top-five-row>span:nth-last-child(2){color:#a57525;font-weight:900;text-align:right}.tgt-marker-top-five-row>small{color:#78827d;font-size:10px;font-weight:800;text-align:right}.tgt-marker-top-five-card p{margin:8px;color:#78827d;text-align:center}@media(max-width:600px){.tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{grid-template-columns:1fr;padding:7px;top:env(safe-area-inset-top);transform:translateZ(0);will-change:transform}.tgt-marker-top-five-card>header{padding:8px 10px}.tgt-marker-top-five-card>div{padding:3px 8px}.tgt-marker-top-five-row{min-height:34px}.tgt-marker-top-five-row>strong{font-size:12px}}
         .tgt-marker-live-panel{position:fixed;inset:0;z-index:1000;overflow:auto;padding:0 0 40px;background:#f3efe6}.tgt-marker-live-header{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;min-height:68px;padding:10px 18px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935);border-bottom:1px solid rgba(240,207,130,.35)}.tgt-marker-live-header strong{text-align:center;font-size:20px}.tgt-marker-live-back,.tgt-marker-live-refresh{min-height:42px;padding:0 14px;border:1px solid rgba(240,207,130,.45);border-radius:999px;color:#f7df99;background:rgba(2,27,20,.48);font-weight:900;cursor:pointer}.tgt-marker-live-back{justify-self:start}.tgt-marker-live-refresh{justify-self:end}.tgt-marker-live-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:720px;margin:20px auto 12px;padding:8px;border-radius:16px;background:#e4eade}.tgt-marker-live-toggle button{min-height:46px;border:0;border-radius:12px;color:#244539;background:transparent;font-weight:900;cursor:pointer}.tgt-marker-live-toggle button.active{color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935)}.tgt-marker-live-table{width:min(960px,calc(100% - 24px));margin:0 auto;border-radius:18px;background:#fff;box-shadow:0 18px 50px rgba(18,48,36,.14)}.tgt-marker-live-table table{width:100%;border-collapse:collapse}.tgt-marker-live-table thead{color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-live-table th{padding:15px 12px;color:#f7df99!important;border-bottom:1px solid rgba(240,207,130,.28);font-size:11px;letter-spacing:.1em;text-transform:uppercase}.tgt-marker-live-table td{padding:15px 12px;border-bottom:1px solid #e5ebe6;background:#fffdf8}.tgt-marker-live-table .player-name{color:#103d2d;font-weight:900}@media(max-width:600px){.tgt-marker-live-header{grid-template-columns:auto 1fr auto;padding:10px}.tgt-marker-live-header strong{font-size:17px}.tgt-marker-live-back,.tgt-marker-live-refresh{padding:0 10px}.tgt-marker-live-toggle{margin:12px}.tgt-marker-live-table{width:calc(100% - 12px)}.tgt-marker-live-table table{min-width:0!important}.tgt-marker-live-table th,.tgt-marker-live-table td{padding:13px 8px}.tgt-marker-live-table .player-name{font-size:14px}}
         .tgt-marker-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:22px;background:#f4f0e6}.tgt-marker-kpi{min-height:118px;padding:18px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;border:1px solid rgba(236,201,115,.48);border-radius:18px;background:linear-gradient(145deg,#052a1f,#0a4935);box-shadow:0 12px 28px rgba(3,31,23,.14)}.tgt-marker-kpi span{color:#cdb46d;font-size:10px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}.tgt-marker-kpi strong{color:#f7df99;font-family:Georgia,serif;font-size:clamp(21px,2.2vw,27px);line-height:1.18}.tgt-marker-progress{grid-column:1/-1;min-height:100px}@media(max-width:700px){.tgt-marker-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}.tgt-marker-kpi{min-height:100px;padding:14px 9px;gap:12px}.tgt-marker-kpi strong{font-size:19px}.tgt-marker-progress{grid-column:1/-1}}@media(max-width:390px){.tgt-marker-kpis{grid-template-columns:1fr}.tgt-marker-progress{grid-column:auto}}
       `}</style>

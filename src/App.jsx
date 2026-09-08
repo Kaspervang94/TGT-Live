@@ -69,24 +69,34 @@ const LUBKER_FINAL_COURSES = [
     tees: [["Gold · Herre",76.3,147,6476],["Sort · Herre",74.5,142,6103],["White · Herre",72.8,139,5770],["Yellow · Herre",71.1,136,5415],["Red · Herre",68.0,132,4841],["Gold · Dame",83.5,154,6476],["Sort · Dame",81.3,149,6103],["White · Dame",79.3,145,5770],["Yellow · Dame",77.1,140,5415],["Red · Dame",73.6,133,4841]] },
 ];
 
-function usePositionChanges(entries = [], getId = (entry) => entry?.id) {
+function usePositionChanges(entries = [], getId = (entry) => entry?.id, scoreEventVersion = 0) {
   const previousPositionsRef = useRef(new Map());
+  const processedEventVersionRef = useRef(scoreEventVersion);
   const [changes, setChanges] = useState({});
   const signature = entries.map((entry) => String(getId(entry) ?? "")).join("|");
   useEffect(() => {
-    const previous = previousPositionsRef.current;
     const next = new Map();
-    const nextChanges = {};
     entries.forEach((entry, index) => {
       const id = String(getId(entry) ?? "");
-      if (!id) return;
-      next.set(id, index + 1);
+      if (id) next.set(id, index + 1);
+    });
+    const previous = previousPositionsRef.current;
+    const isNewRealScoreEvent = scoreEventVersion > processedEventVersionRef.current;
+    if (previous.size === 0 || !isNewRealScoreEvent) {
+      previousPositionsRef.current = next;
+      processedEventVersionRef.current = scoreEventVersion;
+      setChanges({});
+      return;
+    }
+    const nextChanges = {};
+    next.forEach((position, id) => {
       const previousPosition = previous.get(id);
-      nextChanges[id] = previousPosition ? previousPosition - (index + 1) : 0;
+      nextChanges[id] = previousPosition ? previousPosition - position : 0;
     });
     previousPositionsRef.current = next;
+    processedEventVersionRef.current = scoreEventVersion;
     setChanges(nextChanges);
-  }, [signature]);
+  }, [signature, scoreEventVersion]);
   return changes;
 }
 function PositionMovement({ value = 0 }) {
@@ -468,6 +478,7 @@ function Leaderboard({ onOpenLogin }) {
   const [teamData, setTeamData] = useState(null);
   const [closestEntries, setClosestEntries] = useState([]);
   const [approvedBonuses, setApprovedBonuses] = useState([]);
+  const [publicScoreEventVersion, setPublicScoreEventVersion] = useState(0);
   const [finalStandingsData, setFinalStandingsData] = useState(null);
   const [hallOfFame, setHallOfFame] = useState([]);
   const [publicRounds, setPublicRounds] = useState([]);
@@ -823,7 +834,12 @@ function Leaderboard({ onOpenLogin }) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "scores" },
-        loadData
+        async (payload) => {
+          await loadData();
+          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+            setPublicScoreEventVersion((current) => current + 1);
+          }
+        }
       )
       .on(
         "postgres_changes",
@@ -904,10 +920,10 @@ function Leaderboard({ onOpenLogin }) {
             : a.teamName.localeCompare(b.teamName, "da")
         )
     : historicalTeamStandings;
-  const cumulativeIndividualMovements = usePositionChanges(cumulativeStandings, (player) => player.player_id);
-  const cumulativeTeamMovements = usePositionChanges(cumulativeTeamStandings, (team) => team.teamId);
-  const roundIndividualMovements = usePositionChanges(liveLeaderboard, (player) => player.playerId);
-  const roundTeamMovements = usePositionChanges(teamLeaderboard, (team) => team.teamId ?? team.id);
+  const cumulativeIndividualMovements = usePositionChanges(cumulativeStandings, (player) => player.player_id, publicScoreEventVersion);
+  const cumulativeTeamMovements = usePositionChanges(cumulativeTeamStandings, (team) => team.teamId, publicScoreEventVersion);
+  const roundIndividualMovements = usePositionChanges(liveLeaderboard, (player) => player.playerId, publicScoreEventVersion);
+  const roundTeamMovements = usePositionChanges(teamLeaderboard, (team) => team.teamId ?? team.id, publicScoreEventVersion);
   const publicIndividualTopFive = cumulativeStandings.slice(0, 5).map((player) => ({
     id: player.player_id,
     name: player.player_name,
@@ -7036,6 +7052,7 @@ function MarkerDashboard({
   const [markerTeamData, setMarkerTeamData] = useState(null);
   const [markerLiveLoading, setMarkerLiveLoading] = useState(false);
   const [markerLiveError, setMarkerLiveError] = useState("");
+  const [markerScoreEventVersion, setMarkerScoreEventVersion] = useState(0);
   const [markerIndividualTopFive, setMarkerIndividualTopFive] = useState([]);
   const [markerTeamTopFive, setMarkerTeamTopFive] = useState([]);
   async function loadMarkerLiveScore() {
@@ -7642,7 +7659,12 @@ function MarkerDashboard({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "scores", filter: `round_id=eq.${assignment.round_id}` },
-        loadMarkerLiveScore
+        async (payload) => {
+          await loadMarkerLiveScore();
+          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+            setMarkerScoreEventVersion((current) => current + 1);
+          }
+        }
       )
       .subscribe();
     return () => {
@@ -7652,10 +7674,10 @@ function MarkerDashboard({
 
   const markerIndividualLeaderboard = markerLiveData?.leaderboard ?? [];
   const markerTeamLeaderboard = markerTeamData?.leaderboard ?? [];
-  const markerIndividualMovements = usePositionChanges(markerIndividualTopFive, (entry) => entry.id);
-  const markerTeamMovements = usePositionChanges(markerTeamTopFive, (entry) => entry.id);
-  const markerRoundIndividualMovements = usePositionChanges(markerIndividualLeaderboard, (entry) => entry.playerId);
-  const markerRoundTeamMovements = usePositionChanges(markerTeamLeaderboard, (entry) => entry.teamId ?? entry.id);
+  const markerIndividualMovements = usePositionChanges(markerIndividualTopFive, (entry) => entry.id, markerScoreEventVersion);
+  const markerTeamMovements = usePositionChanges(markerTeamTopFive, (entry) => entry.id, markerScoreEventVersion);
+  const markerRoundIndividualMovements = usePositionChanges(markerIndividualLeaderboard, (entry) => entry.playerId, markerScoreEventVersion);
+  const markerRoundTeamMovements = usePositionChanges(markerTeamLeaderboard, (entry) => entry.teamId ?? entry.id, markerScoreEventVersion);
   function MarkerTopFiveCard({ title, entries, movements }) {
     return (
       <section className="tgt-marker-top-five-card">

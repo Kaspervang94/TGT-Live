@@ -725,8 +725,16 @@ function Leaderboard({ onOpenLogin }) {
       }
     }
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.body.classList.add("tgt-menu-open");
     document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.classList.remove("tgt-menu-open");
+      document.removeEventListener("keydown", closeOnEscape);
+    };
   }, [menuOpen]);
 
   function switchSeason(season) {
@@ -1540,7 +1548,7 @@ function Leaderboard({ onOpenLogin }) {
       {menuOpen && (
         <>
           <div className="tgt-menu-backdrop" onClick={() => setMenuOpen(false)} />
-          <aside id="tgt-main-menu" className="tgt-drawer" aria-label="Hovedmenu">
+          <aside id="tgt-main-menu" className="tgt-drawer" aria-label="Hovedmenu" aria-modal="true" role="dialog">
             <div className="tgt-drawer-header">
               <div>
                 <p className="eyebrow">The Golden Tee Tour</p>

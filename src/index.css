@@ -109,3 +109,17 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* TGT mobile viewport guard */
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+}
+html,
+body { overflow-x: hidden; }
+body,
+#root { min-height: 100dvh; }
+

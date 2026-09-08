@@ -2675,7 +2675,7 @@ function MarkerLogin({
             onChange={(event) =>
               setUsername(event.target.value)
             }
-            placeholder="fx bold1 eller admin"
+            placeholder="fx admin eller bold1"
             autoComplete="username"
             required
             className="form-input"
@@ -2710,7 +2710,7 @@ function MarkerLogin({
           >
             {loggingIn
               ? "Logger ind..."
-              : "Log ind som markør"}
+              : "Log ind"}
           </button>
 
           <button
@@ -4888,8 +4888,8 @@ function FlightAdmin({ season = 2027 }) {
                     }}
                   >
                     {flight.markers?.length > 0
-                      ? `Markørlogin tilknyttet: bold${draft.flightNumber}`
-                      : `Markørlogin mangler: bold${draft.flightNumber}`}
+                      ? `Markørlogin tilknyttet: bold${draft.flightNumber}@tgt.dk`
+                      : `Markørlogin mangler: bold${draft.flightNumber}@tgt.dk`}
                   </div>
 
                   <div
@@ -5366,6 +5366,9 @@ function AdminClosestToPin({ session, onLogout }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [adminSeasonTab, setAdminSeasonTab] = useState("2026");
   const [adminSection, setAdminSection] = useState("overview");
+  const [regularSeasonPreview, setRegularSeasonPreview] = useState([]);
+  const [regularSeasonArchive, setRegularSeasonArchive] = useState([]);
+  const [finalizingRegularSeason, setFinalizingRegularSeason] = useState(false);
 
   const loadAdminData = useCallback(async () => {
     setLoading(true);
@@ -5482,6 +5485,60 @@ function AdminClosestToPin({ session, onLogout }) {
   useEffect(() => {
     loadAdminData();
   }, [loadAdminData]);
+  useEffect(() => {
+    if (adminSection !== "season_center") return;
+    loadRegularSeasonFinaleCenter().catch((error) => {
+      console.error("Sæsoncenter kunne ikke hentes:", error);
+      setErrorMessage(error.message ?? "Sæsoncenter kunne ikke hentes.");
+    });
+  }, [adminSeasonTab, adminSection]);
+
+  async function loadRegularSeasonFinaleCenter() {
+    const [previewResult, archiveResult] = await Promise.all([
+      supabase
+        .from("season_individual_standings")
+        .select("player_id, player_name, counting_rounds, counting_score, halved_score")
+        .eq("season", Number(adminSeasonTab))
+        .order("halved_score", { ascending: true }),
+      supabase
+        .from("season_regular_standings")
+        .select("player_id, player_name, counting_score, halved_score, finalized_at")
+        .eq("season", Number(adminSeasonTab))
+        .order("position", { ascending: true }),
+    ]);
+    if (previewResult.error) throw previewResult.error;
+    if (archiveResult.error && archiveResult.error.code !== "42P01") throw archiveResult.error;
+    setRegularSeasonPreview(previewResult.data ?? []);
+    setRegularSeasonArchive(archiveResult.data ?? []);
+  }
+
+  async function handleFinalizeRegularSeason() {
+    const unqualified = regularSeasonPreview.filter((player) => Number(player.counting_rounds) < 4);
+    if (unqualified.length > 0) {
+      setErrorMessage(`${unqualified.length} spiller(e) mangler fire tællende runder.`);
+      return;
+    }
+    const confirmed = window.confirm(
+      "Vil du afslutte grundspillet i TGT ${adminSeasonTab}? De fire bedste scorer gemmes, og den samlede score halveres som udgangspunkt til finalen."
+    );
+    if (!confirmed) return;
+    setFinalizingRegularSeason(true);
+    setMessage("");
+    setErrorMessage("");
+    try {
+      const { data, error } = await supabase.rpc("finalize_regular_season", {
+        requested_season: Number(adminSeasonTab),
+      });
+      if (error) throw error;
+      setMessage(`Grundspillet er afsluttet. ${data ?? regularSeasonPreview.length} spilleres finaleudgangspunkt er gemt.`);
+      await loadRegularSeasonFinaleCenter();
+    } catch (error) {
+      console.error("Fejl ved afslutning af grundspillet:", error);
+      setErrorMessage(error.message ?? "Grundspillet kunne ikke afsluttes.");
+    } finally {
+      setFinalizingRegularSeason(false);
+    }
+  }
 
   async function handleRoundLock(roundData) {
     const isLocked = Boolean(roundData.locked_at);
@@ -5851,7 +5908,7 @@ function AdminClosestToPin({ session, onLogout }) {
                   ["participants", "Deltagere"],
                   ["flights", "Bolde"],
                   ["courses", "Banedatabase"],
-                  ...(adminSeasonTab === "2026" ? [["finals", "Finalestyring"]] : []),
+                  ["season_center", "Sæsoncenter"],
                 ].map(([value, label]) => (
                   <button
                     type="button"
@@ -5869,8 +5926,51 @@ function AdminClosestToPin({ session, onLogout }) {
                 ))}
               </nav>
             )}
-            {adminSeasonTab === "2026" && adminSection === "finals" && (
+            {adminSection === "season_center" && (
               <>
+                <section style={{ padding: 20, border: "1px solid rgba(199,154,66,.42)", borderRadius: 16, background: "linear-gradient(135deg, #fffaf0, #ffffff)", marginBottom: 24 }}>
+                  <p className="eyebrow">Trin 1 · Grundspil</p>
+                  <h2 style={{ marginTop: 0 }}>Afslut grundspillet</h2>
+                  <p className="description">Systemet tager hver spillers fire bedste rundescores, lægger dem sammen og halverer summen. Det halverede resultat gemmes som spillerens udgangspunkt til finalen.</p>
+                  <div className="flight-information" style={{ marginTop: 18 }}>
+                    <div><span>Spillere</span><strong>{regularSeasonPreview.length}</strong></div>
+                    <div><span>Klar med 4 runder</span><strong>{regularSeasonPreview.filter((player) => Number(player.counting_rounds) === 4).length}</strong></div>
+                    <div><span>Status</span><strong>{regularSeasonArchive.length > 0 ? "Afsluttet" : "Åben"}</strong></div>
+                    <div><span>Finalegrundlag</span><strong>{regularSeasonArchive.length > 0 ? `${regularSeasonArchive.length} gemt` : "Ikke gemt"}</strong></div>
+                  </div>
+                  <div className="table-wrapper" style={{ marginTop: 16 }}>
+                    <table>
+                      <thead><tr><th>#</th><th>Spiller</th><th className="number-column">4 bedste</th><th className="number-column">Halveret</th><th>Status</th></tr></thead>
+                      <tbody>
+                        {(regularSeasonArchive.length > 0 ? regularSeasonArchive : regularSeasonPreview).map((player, index) => (
+                          <tr key={player.player_id}>
+                            <td>{index + 1}</td><td><span className="player-name">{player.player_name}</span></td>
+                            <td className="number-column">{formatScore(player.counting_score)}</td>
+                            <td className="number-column final-score">{formatScore(player.halved_score)}</td>
+                            <td>{regularSeasonArchive.length > 0 ? "Gemt" : Number(player.counting_rounds) === 4 ? "Klar" : `${player.counting_rounds ?? 0}/4`}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button type="button" onClick={handleFinalizeRegularSeason} disabled={finalizingRegularSeason || regularSeasonArchive.length > 0 || regularSeasonPreview.length === 0 || regularSeasonPreview.some((player) => Number(player.counting_rounds) < 4)} className="login-submit-button" style={{ maxWidth: 420, marginTop: 18 }}>
+                    {finalizingRegularSeason ? "Afslutter grundspillet..." : regularSeasonArchive.length > 0 ? "Grundspillet er afsluttet" : "Afslut grundspillet og gem finaleudgangspunkt"}
+                  </button>
+                </section>
+
+                {adminSeasonTab === "2027" && (
+                  <section style={{ padding: 20, border: "1px solid #d8e4db", borderRadius: 16, background: "#eef7f0", marginBottom: 24 }}>
+                    <p className="eyebrow">Sæsoncenter · TGT 2027</p>
+                    <h2 style={{ marginTop: 0 }}>Grundspil og finale</h2>
+                    <p className="description">Sæsoncenteret følger samme model som 2026. Når alle spillere har fire tællende runder, kan grundspillet afsluttes og det halverede finaleudgangspunkt gemmes ovenfor.</p>
+                    <div className="tgt-final-flow-grid">
+                      <div className="tgt-final-flow-card"><span>Trin 1</span><strong>Afslut grundspillet</strong></div>
+                      <div className="tgt-final-flow-card"><span>Trin 2</span><strong>Opret finalerunder under Runder</strong></div>
+                      <div className="tgt-final-flow-card"><span>Trin 3</span><strong>Afslut sæsonen og arkivér mestrene</strong></div>
+                    </div>
+                  </section>
+                )}
+                {adminSeasonTab === "2026" && <>
                 <section
                   style={{
                     padding: 20,
@@ -5880,8 +5980,8 @@ function AdminClosestToPin({ session, onLogout }) {
                     marginBottom: 24,
                   }}
                 >
-                  <p className="eyebrow">Finaleafvikling 2026</p>
-                  <h2 style={{ marginTop: 0 }}>Klargør og start finalerunderne</h2>
+                  <p className="eyebrow">Sæsoncenter · TGT {adminSeasonTab}</p>
+                  <h2 style={{ marginTop: 0 }}>Afslut grundspillet og klargør sæsonfinalen</h2>
                   <p className="description">
                     Runde 6 og Runde 7 bruger nu samme sikre flow som 2027:
                     deltagere, bolde, markørlogin, publicering og livescoring.
@@ -6240,6 +6340,7 @@ function AdminClosestToPin({ session, onLogout }) {
               )}
             </section>
 
+                </>}
               </>
             )}
 
@@ -6469,22 +6570,6 @@ function MarkerDashboard({
     useState("");
   const [closestError, setClosestError] =
     useState("");
-  const [markerLiveData, setMarkerLiveData] = useState(null);
-  const [showMarkerLiveScore, setShowMarkerLiveScore] = useState(false);
-  const [markerLiveError, setMarkerLiveError] = useState("");
-
-  async function loadMarkerLiveScore(flight = assignment) {
-    const roundId = flight?.round_id ?? flight?.rounds?.id;
-    if (!roundId) return;
-    try {
-      setMarkerLiveError("");
-      const season = flight?.rounds?.tournaments?.season ?? 2026;
-      setMarkerLiveData(await getLiveRoundLeaderboard({ season, roundId }));
-    } catch (error) {
-      console.error("Livescoren kunne ikke hentes:", error);
-      setMarkerLiveError(error.message ?? "Livescoren kunne ikke hentes.");
-    }
-  }
 
   async function loadScores(
     roundId,
@@ -6574,10 +6659,7 @@ function MarkerDashboard({
               tee_id,
               tee_name,
               locked_at,
-              locked_by,
-              tournaments (
-                season
-              )
+              locked_by
             )
           )
         `)
@@ -6744,7 +6826,6 @@ function MarkerDashboard({
           loadedPlayers
         );
         await loadDamebajere(flight.round_id);
-        await loadMarkerLiveScore(flight);
       } catch (scoreError) {
         console.error(
           "Fejl ved hentning af scores:",
@@ -6841,7 +6922,6 @@ function MarkerDashboard({
         assignment.round_id,
         players
       );
-      await loadMarkerLiveScore(assignment);
 
       if (
         selectedHole < 18 &&
@@ -7014,10 +7094,6 @@ function MarkerDashboard({
       })
   ).length;
 
-  const markerLiveLeaderboard = sortIndividualLeaderboard(
-    markerLiveData?.leaderboard ?? []
-  );
-
   return (
     <main className="marker-page tgt-ops-shell">
       <style>{`
@@ -7047,7 +7123,7 @@ function MarkerDashboard({
             </h1>
 
             <p className="description">
-              Logget ind som {session.user.email?.split("@")[0] ?? "markør"}
+              Logget ind som {session.user.email}
             </p>
           </div>
 
@@ -7168,36 +7244,6 @@ function MarkerDashboard({
                 <div className="tgt-marker-kpi"><span>Tee</span><strong>{markerTee?.tee_name ?? assignment.rounds?.tee_name ?? "Ikke valgt"}</strong></div>
                 <div className="tgt-marker-kpi tgt-marker-progress"><span>Huller gemt</span><strong>{completedHoles} / 18 huller</strong></div>
               </div>
-
-              <section className="tgt-marker-live-panel">
-                <button type="button" className="tgt-marker-live-toggle" aria-expanded={showMarkerLiveScore} onClick={() => {
-                  const nextOpen = !showMarkerLiveScore;
-                  setShowMarkerLiveScore(nextOpen);
-                  if (nextOpen) loadMarkerLiveScore(assignment);
-                }}>
-                  <span><small>LIVE</small> Se livescore</span>
-                  <strong>{showMarkerLiveScore ? "Luk ▲" : "Åbn ▼"}</strong>
-                </button>
-                {showMarkerLiveScore && (
-                  <div className="tgt-marker-live-content">
-                    {markerLiveError && <div className="error-box">{markerLiveError}</div>}
-                    {!markerLiveError && markerLiveLeaderboard.length === 0 && <div className="status-box">Livescoren afventer de første gemte scores.</div>}
-                    {!markerLiveError && markerLiveLeaderboard.length > 0 && (
-                      <div className="tgt-marker-live-list">
-                        <div className="tgt-marker-live-head"><span>#</span><span>Spiller</span><span>Score</span><span>Thru</span></div>
-                        {markerLiveLeaderboard.map((player, index) => (
-                          <div className="tgt-marker-live-row" key={player.playerId}>
-                            <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
-                            <span><strong>{player.playerName}</strong><small>HCP {player.handicap ?? "–"}</small></span>
-                            <strong className="tgt-marker-live-score">{player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}</strong>
-                            <strong>{player.holesPlayed}</strong>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
 
               {assignment.rounds?.locked_at && (
                 <div className="error-box" style={{ margin: "20px 20px 0" }}>

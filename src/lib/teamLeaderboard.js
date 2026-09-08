@@ -1,6 +1,31 @@
 import { supabase } from "./supabase";
 import { calculateBestBallLeaderboard } from "./netScoreEngine";
 
+function allocatedStrokes(playingHandicap, strokeIndex) {
+  const handicap = Number(playingHandicap);
+  const index = Number(strokeIndex);
+  if (!Number.isFinite(handicap) || !Number.isFinite(index) || handicap <= 0) return 0;
+  return Math.floor((handicap - 1) / 18) + (index <= ((handicap - 1) % 18) + 1 ? 1 : 0);
+}
+
+function createBestBallScorecard(team, holes, scores) {
+  const scoreMap = new Map(scores.map((score) => [`${score.player_id}-${Number(score.hole_number)}`, Number(score.strokes)]));
+  return holes.map((hole) => {
+    const holeNumber = Number(hole.hole_number);
+    const par = Number(hole.par);
+    const strokeIndex = Number(hole.stroke_index);
+    const options = team.players.map((player) => {
+      const gross = scoreMap.get(`${player.playerId}-${holeNumber}`);
+      const received = allocatedStrokes(player.playingHandicap, strokeIndex);
+      return { playerId: player.playerId, playerName: player.playerName, gross: Number.isFinite(gross) ? gross : null, received, net: Number.isFinite(gross) ? gross - received : null };
+    });
+    const completed = options.length > 0 && options.every((option) => option.net !== null);
+    const winner = completed ? [...options].sort((a,b) => a.net - b.net || a.gross - b.gross)[0] : null;
+    const bestNet = winner?.net ?? null;
+    return { holeNumber, par, strokeIndex, strokesReceived: 0, strokes: bestNet, netStrokes: bestNet, toPar: bestNet === null ? null : bestNet - par, countingPlayerId: winner?.playerId ?? null, countingPlayerName: winner?.playerName ?? null, playerScores: options, completed };
+  });
+}
+
 export async function getTeamLeaderboard({
   season = 2026,
   roundNumber = 6,
@@ -141,10 +166,14 @@ export async function getTeamLeaderboard({
     };
   });
 
-  const leaderboard = calculateBestBallLeaderboard({
-    teams,
-    holes,
-    scores: scoreRows,
+  const calculatedLeaderboard = calculateBestBallLeaderboard({ teams, holes, scores: scoreRows });
+  const teamById = new Map(teams.map((team) => [team.teamId, team]));
+  const leaderboard = calculatedLeaderboard.map((entry) => {
+    const team = teamById.get(entry.teamId);
+    if (!team) return entry;
+    const scorecard = createBestBallScorecard(team, holes, scoreRows);
+    const completedHoles = scorecard.filter((hole) => hole.completed);
+    return { ...entry, players: team.players, scorecard, holesPlayed: completedHoles.length, thru: completedHoles.length };
   });
 
   return {

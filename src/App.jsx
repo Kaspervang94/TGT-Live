@@ -2256,22 +2256,30 @@ function Leaderboard({ onOpenLogin }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {teamLeaderboard.map((team, index) => (
-                    <tr key={team.teamId ?? team.id ?? `${team.teamName}-${index}`}>
-                      <td className="position-column">
-                        <span className={`position-badge position-${index + 1}`}>{index + 1}</span>
-                      </td>
-                      <td>
-                        <span className="player-name">{team.teamName ?? team.name ?? "Ukendt hold"}</span>
-                      </td>
-                      <td className="number-column final-score">
-                        {formatScore(team.scoreToPar ?? team.score ?? team.bestBallScore ?? 0)}
-                      </td>
-                      <td className="number-column">
-                        {team.holesPlayed ?? team.thru ?? 0}
-                      </td>
-                    </tr>
-                  ))}
+                  {teamLeaderboard.map((team, index) => {
+                    const teamKey = team.teamId ?? team.id ?? `${team.teamName}-${index}`;
+                    const isOpen = selectedTeamId === teamKey;
+                    return (
+                      <Fragment key={teamKey}>
+                        <tr className={isOpen ? "is-open" : ""} onClick={() => setSelectedTeamId(isOpen ? null : teamKey)} style={{ cursor: "pointer" }}>
+                          <td className="position-column"><span className={`position-badge position-${index + 1}`}>{index + 1}</span></td>
+                          <td><span className="player-name">{team.teamName ?? team.name ?? "Ukendt hold"}</span><small className="tgt-live-player-meta">Tryk for best ball-scorekort</small></td>
+                          <td className="number-column final-score">{formatScore(team.scoreToPar ?? team.score ?? team.bestBallScore ?? 0)}</td>
+                          <td className="number-column">{team.holesPlayed ?? team.thru ?? 0}</td>
+                        </tr>
+                        {isOpen && (
+                          <tr>
+                            <td colSpan="4" style={{ padding: 0 }}>
+                              <div className="tgt-live-scorecard-detail tgt-team-best-ball-detail">
+                                <strong>{team.teamName ?? team.name} · best ball efter {team.holesPlayed ?? team.thru ?? 0} huller</strong>
+                                <SplitScorecard scorecard={team.scorecard ?? []} position={index + 1} />
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
               {teamLeaderboard.length === 0 && (

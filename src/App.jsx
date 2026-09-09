@@ -136,128 +136,6 @@ function normalizeTeamScorecard(scorecard = []) {
     };
   });
 }
-function getTeamPlayerIds(team = {}) {
-  const direct = [
-    team.playerOneId, team.player_one_id, team.player1Id, team.player_1_id,
-    team.playerTwoId, team.player_two_id, team.player2Id, team.player_2_id,
-  ];
-  const nested = [
-    ...(team.members ?? []),
-    ...(team.players ?? []),
-    ...(team.teamMembers ?? team.team_members ?? []),
-  ].map((member) =>
-    member?.playerId ?? member?.player_id ?? member?.id ?? member?.players?.id
-  );
-  return [...new Set([...direct, ...nested].filter(Boolean).map(String))];
-}
-
-// Beregn holdets best ball direkte fra de allerede netto-normaliserede
-// individuelle scorekort. Dermed kan en brutto-score fra team-viewet ikke
-// overstyre handicapslagene.
-function normalizeTeamLiveLeaderboard(
-  teamLeaderboard = [],
-  individualLeaderboard = []
-) {
-  const individualById = new Map(
-    individualLeaderboard.map((player) => [
-      String(player?.playerId ?? player?.player_id ?? player?.id),
-      player,
-    ])
-  );
-
-  return teamLeaderboard
-    .map((team) => {
-      const playerIds = getTeamPlayerIds(team);
-      const teamPlayers = playerIds
-        .map((id) => individualById.get(id))
-        .filter(Boolean);
-
-      // Hvis team-helperen ikke sender medlems-id'er, beholdes dens scorekort.
-      // Når id'erne findes, er de individuelle netto-scorekort sandhedskilden.
-      if (teamPlayers.length < 2) {
-        const scorecard = normalizeTeamScorecard(team?.scorecard ?? []);
-        return {
-          ...team,
-          scorecard,
-          holesPlayed: scorecard.filter((hole) =>
-            Number.isFinite(Number(hole?.netStrokes))
-          ).length,
-          scoreToPar: getTeamScoreToPar({ ...team, scorecard }),
-        };
-      }
-
-      const holesByPlayer = teamPlayers.map((player) =>
-        new Map(
-          (player.scorecard ?? []).map((hole, index) => [
-            Number(hole?.holeNumber ?? hole?.hole_number ?? index + 1),
-            hole,
-          ])
-        )
-      );
-      const holeNumbers = [...new Set(
-        holesByPlayer.flatMap((holes) => [...holes.keys()])
-      )].sort((a, b) => a - b);
-
-      const scorecard = holeNumbers.map((holeNumber) => {
-        const playerHoles = holesByPlayer.map((holes) => holes.get(holeNumber));
-        const allPlayersScored = playerHoles.every((hole) =>
-          hole && Number.isFinite(Number(hole.strokes))
-        );
-        const template = playerHoles.find(Boolean) ?? {};
-        const par = Number(template.par);
-        if (!allPlayersScored || !Number.isFinite(par)) {
-          return {
-            ...template,
-            holeNumber,
-            netStrokes: null,
-            toPar: null,
-          };
-        }
-        const bestNetStrokes = Math.min(
-          ...playerHoles.map((hole) => Number(hole.netStrokes))
-        );
-        return {
-          ...template,
-          holeNumber,
-          strokes: bestNetStrokes,
-          netStrokes: bestNetStrokes,
-          toPar: bestNetStrokes - par,
-        };
-      });
-      const playedHoles = scorecard.filter((hole) =>
-        Number.isFinite(Number(hole.netStrokes))
-      );
-      const scoreToPar = playedHoles.reduce(
-        (total, hole) => total + Number(hole.netStrokes) - Number(hole.par),
-        0
-      );
-
-      return {
-        ...team,
-        scorecard,
-        holesPlayed: playedHoles.length,
-        thru: playedHoles.length,
-        netStrokes: playedHoles.reduce(
-          (total, hole) => total + Number(hole.netStrokes),
-          0
-        ),
-        scoreToPar,
-        score_to_par: scoreToPar,
-        bestBallScore: scoreToPar,
-      };
-    })
-    .sort((a, b) => {
-      const scoreDifference =
-        Number(getTeamScoreToPar(a) ?? Infinity) -
-        Number(getTeamScoreToPar(b) ?? Infinity);
-      return scoreDifference ||
-        String(a.teamName ?? a.name ?? "").localeCompare(
-          String(b.teamName ?? b.name ?? ""),
-          "da"
-        );
-    });
-}
-
 function getTeamScoreToPar(team) {
   const scorecard = normalizeTeamScorecard(team?.scorecard ?? []);
   const playedHoles = scorecard.filter(
@@ -335,119 +213,23 @@ function getPlayerPlayingHandicap(player, roundData = null) {
   return allocatedStrokes > 0 ? allocatedStrokes : null;
 }
 
-// Retter livescoren til NETTO i forhold til par.
-// Handicapslag fordeles efter spillerens SPH og hullets stroke index.
+function hasActualScore(value) { return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)); }
 function normalizeIndividualLiveLeaderboard(leaderboard = [], roundData = null) {
   const roundHoles = roundData?.holes ?? roundData?.courseHoles ?? [];
-  const roundHoleByNumber = new Map(
-    roundHoles.map((hole, index) => [
-      Number(hole?.holeNumber ?? hole?.hole_number ?? index + 1),
-      hole,
-    ])
-  );
-
   return leaderboard.map((player) => {
-    const playingHandicap = getPlayerPlayingHandicap(player, roundData);
-    const rawScorecard = player?.scorecard ?? [];
-
-    const scorecard = rawScorecard.map((hole, index) => {
-      const holeNumber = Number(
-        hole?.holeNumber ?? hole?.hole_number ?? roundHoles[index]?.hole_number ?? index + 1
-      );
-      const courseHole = roundHoleByNumber.get(holeNumber) ?? roundHoles[index] ?? {};
-
-      const strokesValue =
-        hole?.strokes ??
-        hole?.grossStrokes ??
-        hole?.gross_strokes ??
-        hole?.score ??
-        hole?.grossScore ??
-        hole?.gross_score;
-      const strokes =
-        strokesValue === null || strokesValue === undefined || strokesValue === ""
-          ? null
-          : Number(strokesValue);
-
+    const sph = getPlayerPlayingHandicap(player, roundData);
+    const scorecard = (player?.scorecard ?? []).map((hole, index) => {
+      const courseHole = roundHoles.find((h) => Number(h?.hole_number ?? h?.holeNumber) === Number(hole?.holeNumber ?? hole?.hole_number ?? index + 1)) ?? roundHoles[index] ?? {};
+      const raw = hole?.strokes ?? hole?.grossStrokes ?? hole?.gross_strokes ?? hole?.score;
+      const strokes = hasActualScore(raw) ? Number(raw) : null;
       const par = Number(hole?.par ?? courseHole?.par);
-      const strokeIndex = Number(
-        hole?.strokeIndex ??
-        hole?.stroke_index ??
-        courseHole?.strokeIndex ??
-        courseHole?.stroke_index
-      );
-
-      const savedReceivedValue =
-        hole?.strokesReceived ??
-        hole?.strokes_received ??
-        hole?.receivedStrokes ??
-        hole?.received_strokes ??
-        hole?.handicapStrokes ??
-        hole?.handicap_strokes;
-      const savedReceived = Number(savedReceivedValue);
-      // Backendens live-scorekort kan sende strokesReceived: 0 som standard.
-      // Det må ikke overstyre den korrekte handicapfordeling. Når SPH og
-      // stroke index findes, beregner vi derfor altid slagene lokalt.
-      const calculatedReceived = getAllocatedStrokes(
-        playingHandicap,
-        strokeIndex
-      );
-      const canCalculateReceived =
-        Number.isFinite(Number(playingHandicap)) &&
-        Number.isFinite(strokeIndex);
-      const strokesReceived = canCalculateReceived
-        ? calculatedReceived
-        : savedReceivedValue !== null &&
-            savedReceivedValue !== undefined &&
-            savedReceivedValue !== "" &&
-            Number.isFinite(savedReceived)
-          ? savedReceived
-          : 0;
-
-      const netStrokes =
-        Number.isFinite(strokes) && Number.isFinite(strokesReceived)
-          ? strokes - strokesReceived
-          : null;
-      const toPar =
-        netStrokes !== null && Number.isFinite(par)
-          ? netStrokes - par
-          : null;
-
-      return {
-        ...courseHole,
-        ...hole,
-        holeNumber,
-        par: Number.isFinite(par) ? par : null,
-        strokeIndex: Number.isFinite(strokeIndex) ? strokeIndex : null,
-        strokes: Number.isFinite(strokes) ? strokes : null,
-        strokesReceived,
-        netStrokes,
-        toPar,
-      };
+      const strokeIndex = Number(hole?.strokeIndex ?? hole?.stroke_index ?? courseHole?.strokeIndex ?? courseHole?.stroke_index);
+      const received = getAllocatedStrokes(sph, strokeIndex);
+      const netStrokes = strokes === null ? null : strokes - received;
+      return { ...courseHole, ...hole, strokes, strokesReceived: received, netStrokes, toPar: netStrokes === null || !Number.isFinite(par) ? null : netStrokes - par };
     });
-
-    const playedHoles = scorecard.filter((hole) => Number.isFinite(hole.strokes));
-    const grossStrokes = playedHoles.reduce(
-      (total, hole) => total + hole.strokes,
-      0
-    );
-    const netStrokes = playedHoles.reduce(
-      (total, hole) => total + Number(hole.netStrokes),
-      0
-    );
-    const scoreToPar = playedHoles.reduce(
-      (total, hole) => total + Number(hole.toPar),
-      0
-    );
-
-    return {
-      ...player,
-      playingHandicap,
-      scorecard,
-      holesPlayed: playedHoles.length,
-      grossStrokes,
-      netStrokes,
-      scoreToPar,
-    };
+    const played = scorecard.filter((h) => hasActualScore(h.strokes));
+    return { ...player, scorecard, holesPlayed: played.length, grossStrokes: played.reduce((n,h)=>n+Number(h.strokes),0), scoreToPar: played.reduce((n,h)=>n+Number(h.toPar),0) };
   });
 }
 function formatDate(date) {
@@ -1105,10 +887,7 @@ function Leaderboard({ onOpenLogin }) {
 
   const liveLeaderboard = sortIndividualLeaderboard(
     applyIndividualBonuses({
-      leaderboard: normalizeIndividualLiveLeaderboard(
-        liveData?.leaderboard ?? [],
-        liveData?.round ?? null
-      ),
+      leaderboard: normalizeIndividualLiveLeaderboard(liveData?.leaderboard ?? [], liveData?.round ?? null),
       approvedBonuses,
     })
   );
@@ -1135,10 +914,7 @@ function Leaderboard({ onOpenLogin }) {
           return scoreDifference || a.player_name.localeCompare(b.player_name, "da");
         })
     : standings;
-  const teamLeaderboard = normalizeTeamLiveLeaderboard(
-    teamData?.leaderboard ?? [],
-    liveLeaderboard
-  );
+  const teamLeaderboard = teamData?.leaderboard ?? [];
   const liveTeamById = new Map(
     teamLeaderboard.map((team) => [team.teamId ?? team.id, team])
   );
@@ -1403,7 +1179,7 @@ function Leaderboard({ onOpenLogin }) {
       eyebrow: "Live fra sæsonen",
       title: liveData?.round?.name ?? "Runde 6 live",
       description:
-        "Nettoscoren vises i forhold til par og opdateres automatisk, når markørerne gemmer et hul.",
+        "Bruttoscoren vises i forhold til par og opdateres automatisk, når markørerne gemmer et hul.",
     },
     team: {
       eyebrow: "Holdturnering",
@@ -7319,7 +7095,9 @@ function MarkerDashboard({
   const [markerScoreEventVersion, setMarkerScoreEventVersion] = useState(0);
   const [markerIndividualTopFive, setMarkerIndividualTopFive] = useState([]);
   const [markerTeamTopFive, setMarkerTeamTopFive] = useState([]);
+  const markerLiveRequestRef = useRef(0);
   async function loadMarkerLiveScore() {
+    const requestId = ++markerLiveRequestRef.current;
     if (!assignment?.round_id || !assignment?.rounds?.round_number) return;
     setMarkerLiveLoading(true);
     setMarkerLiveError("");
@@ -7365,15 +7143,11 @@ function MarkerDashboard({
           roundSevenNumber: individualFinalRound.round_number,
         });
         individualTopFive = [...(finalData?.standings ?? [])]
-          .map((player) => ({
-            id: player.playerId,
-            name: player.playerName,
-            score: player.finalScore ?? player.startingScore,
-            holesPlayed:
-              assignment.rounds.round_type === "individual_final"
-                ? player.roundSevenHoles
-                : player.roundSixHoles,
-          }))
+          .map((player) => {
+            const livePlayer = normalizedIndividual.find((entry) => String(entry.playerId ?? entry.player_id) === String(player.playerId));
+            const oldRoundScore = Number(assignment.rounds.round_type === "individual_final" ? (player.roundSevenOfficialScore ?? 0) : (player.roundSixOfficialScore ?? 0));
+            return { id: player.playerId, name: player.playerName, score: Number(player.finalScore ?? player.startingScore ?? 0) - oldRoundScore + Number(livePlayer?.scoreToPar ?? 0), holesPlayed: livePlayer?.holesPlayed ?? 0 };
+          })
           .sort((a, b) => Number(a.score ?? Infinity) - Number(b.score ?? Infinity) || a.name.localeCompare(b.name, "da"))
           .slice(0, 5);
       }
@@ -7387,20 +7161,8 @@ function MarkerDashboard({
         };
         historyByTeam[result.team_id].rounds.push(Number(result.score));
       });
-      const normalizedIndividual = normalizeIndividualLiveLeaderboard(
-        individualData?.leaderboard ?? [],
-        {
-          ...(individualData?.round ?? {}),
-          tee: markerTee ?? individualData?.round?.tee ?? null,
-          holes: individualData?.holes ?? holes,
-        }
-      );
-      const normalizedTeams = normalizeTeamLiveLeaderboard(
-        teamData?.leaderboard ?? [],
-        normalizedIndividual
-      );
       const liveTeamById = new Map(
-        normalizedTeams.map((team) => [team.teamId ?? team.id, team])
+        (teamData?.leaderboard ?? []).map((team) => [team.teamId ?? team.id, team])
       );
       const teamTopFive = Object.values(historyByTeam)
         .map((team) => {
@@ -7417,6 +7179,9 @@ function MarkerDashboard({
         })
         .sort((a, b) => a.score - b.score || a.name.localeCompare(b.name, "da"))
         .slice(0, 5);
+      if (requestId !== markerLiveRequestRef.current) return;
+      setMarkerLiveData(normalizedIndividualData);
+      setMarkerTeamData(teamData);
       setMarkerIndividualTopFive(individualTopFive);
       setMarkerTeamTopFive(teamTopFive);
     } catch (error) {
@@ -7948,20 +7713,8 @@ function MarkerDashboard({
     };
   }, [assignment?.round_id, assignment?.rounds?.round_number, assignment?.rounds?.live_leaderboard_mode]);
 
-  const markerIndividualLeaderboard = sortIndividualLeaderboard(
-    normalizeIndividualLiveLeaderboard(
-      markerLiveData?.leaderboard ?? [],
-      {
-        ...(markerLiveData?.round ?? {}),
-        tee: markerTee ?? markerLiveData?.round?.tee ?? null,
-        holes: markerLiveData?.holes ?? holes,
-      }
-    )
-  );
-  const markerTeamLeaderboard = normalizeTeamLiveLeaderboard(
-    markerTeamData?.leaderboard ?? [],
-    markerIndividualLeaderboard
-  );
+  const markerIndividualLeaderboard = [...(markerLiveData?.leaderboard ?? [])].sort((a,b) => Number(a.scoreToPar ?? Infinity) - Number(b.scoreToPar ?? Infinity) || Number(b.holesPlayed ?? 0) - Number(a.holesPlayed ?? 0));
+  const markerTeamLeaderboard = markerTeamData?.leaderboard ?? [];
   const markerIndividualMovements = usePositionChanges(markerIndividualTopFive, (entry) => entry.id, markerScoreEventVersion);
   const markerTeamMovements = usePositionChanges(markerTeamTopFive, (entry) => entry.id, markerScoreEventVersion);
   const markerRoundIndividualMovements = usePositionChanges(markerIndividualLeaderboard, (entry) => entry.playerId, markerScoreEventVersion);
@@ -8006,8 +7759,8 @@ function MarkerDashboard({
   return (
     <main className="marker-page tgt-ops-shell">
       <style>{`
-        .tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{position:-webkit-sticky;position:sticky;top:max(0px,env(safe-area-inset-top));z-index:60;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;padding:10px 12px;background:rgba(243,239,230,.94);backdrop-filter:blur(12px);border-bottom:1px solid rgba(25,65,48,.14);box-shadow:0 12px 28px rgba(18,48,36,.12)}.tgt-marker-top-five-card{overflow:hidden;border:1px solid rgba(240,207,130,.46);border-radius:16px;background:#fffdf8;box-shadow:0 8px 22px rgba(3,31,23,.10)}.tgt-marker-top-five-card>header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:10px 12px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-top-five-card>header strong{font-size:12px;letter-spacing:.08em}.tgt-marker-top-five-card>header small{color:#cdb46d;font-size:9px;font-weight:900}.tgt-marker-top-five-card>div{padding:5px 9px}.tgt-marker-top-five-row{display:grid;grid-template-columns:32px minmax(0,1fr) 68px 42px;align-items:center;gap:8px;min-height:38px;border-bottom:1px solid #e7ece8}.tgt-marker-top-five-row:last-child{border-bottom:0}.tgt-marker-top-five-row .position-badge{width:25px;height:25px;min-width:25px;font-size:11px}.tgt-marker-top-five-row>strong{overflow:hidden;color:#173d2e;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.tgt-marker-top-five-row>span:nth-last-child(2){color:#a57525;font-weight:900;text-align:right}.tgt-marker-top-five-row>small{color:#78827d;font-size:10px;font-weight:800;text-align:right}.tgt-marker-top-five-card p{margin:8px;color:#78827d;text-align:center}@media(max-width:600px){.tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{grid-template-columns:1fr;padding:7px;top:env(safe-area-inset-top);transform:translateZ(0);will-change:transform}.tgt-marker-top-five-card>header{padding:8px 10px}.tgt-marker-top-five-card>div{padding:3px 8px}.tgt-marker-top-five-row{min-height:34px}.tgt-marker-top-five-row>strong{font-size:12px}}
-        .tgt-marker-live-panel{position:fixed;inset:0;z-index:1000;overflow:auto;padding:0 0 40px;background:#f3efe6}.tgt-marker-live-header{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;min-height:68px;padding:10px 18px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935);border-bottom:1px solid rgba(240,207,130,.35)}.tgt-marker-live-header strong{text-align:center;font-size:20px}.tgt-marker-live-back,.tgt-marker-live-refresh{min-height:42px;padding:0 14px;border:1px solid rgba(240,207,130,.45);border-radius:999px;color:#f7df99;background:rgba(2,27,20,.48);font-weight:900;cursor:pointer}.tgt-marker-live-back{justify-self:start}.tgt-marker-live-refresh{justify-self:end}.tgt-marker-live-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:720px;margin:20px auto 12px;padding:8px;border-radius:16px;background:#e4eade}.tgt-marker-live-toggle button{min-height:46px;border:0;border-radius:12px;color:#244539;background:transparent;font-weight:900;cursor:pointer}.tgt-marker-live-toggle button.active{color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935)}.tgt-marker-live-table{width:min(960px,calc(100% - 24px));margin:0 auto;border-radius:18px;background:#fff;box-shadow:0 18px 50px rgba(18,48,36,.14)}.tgt-marker-live-table table{width:100%;border-collapse:collapse}.tgt-marker-live-table thead{color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-live-table th{padding:15px 12px;color:#f7df99!important;border-bottom:1px solid rgba(240,207,130,.28);font-size:11px;letter-spacing:.1em;text-transform:uppercase}.tgt-marker-live-table td{padding:15px 12px;border-bottom:1px solid #e5ebe6;background:#fffdf8}.tgt-marker-live-table .player-name{color:#103d2d;font-weight:900}@media(max-width:600px){.tgt-marker-live-header{grid-template-columns:auto 1fr auto;padding:10px}.tgt-marker-live-header strong{font-size:17px}.tgt-marker-live-back,.tgt-marker-live-refresh{padding:0 10px}.tgt-marker-live-toggle{margin:12px}.tgt-marker-live-table{width:calc(100% - 12px)}.tgt-marker-live-table table{min-width:0!important}.tgt-marker-live-table th,.tgt-marker-live-table td{padding:13px 8px}.tgt-marker-live-table .player-name{font-size:14px}}
+        .tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{position:relative;top:auto;z-index:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;padding:10px 12px;background:rgba(243,239,230,.94);backdrop-filter:blur(12px);border-bottom:1px solid rgba(25,65,48,.14);box-shadow:0 12px 28px rgba(18,48,36,.12)}.tgt-marker-top-five-card{overflow:hidden;border:1px solid rgba(240,207,130,.46);border-radius:16px;background:#fffdf8;box-shadow:0 8px 22px rgba(3,31,23,.10)}.tgt-marker-top-five-card>header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:10px 12px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-top-five-card>header strong{font-size:12px;letter-spacing:.08em}.tgt-marker-top-five-card>header small{color:#cdb46d;font-size:9px;font-weight:900}.tgt-marker-top-five-card>div{padding:5px 9px}.tgt-marker-top-five-row{display:grid;grid-template-columns:32px minmax(0,1fr) 68px 42px;align-items:center;gap:8px;min-height:38px;border-bottom:1px solid #e7ece8}.tgt-marker-top-five-row:last-child{border-bottom:0}.tgt-marker-top-five-row .position-badge{width:25px;height:25px;min-width:25px;font-size:11px}.tgt-marker-top-five-row>strong{overflow:hidden;color:#173d2e;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.tgt-marker-top-five-row>span:nth-last-child(2){color:#a57525;font-weight:900;text-align:right}.tgt-marker-top-five-row>small{color:#78827d;font-size:10px;font-weight:800;text-align:right}.tgt-marker-top-five-card p{margin:8px;color:#78827d;text-align:center}@media(max-width:600px){.tgt-marker-dashboard-card{overflow:visible!important}.tgt-marker-top-five-wrap{grid-template-columns:1fr;padding:7px;position:relative;top:auto;transform:none;will-change:auto;touch-action:pan-y}.tgt-marker-top-five-card>header{padding:8px 10px}.tgt-marker-top-five-card>div{padding:3px 8px}.tgt-marker-top-five-row{min-height:34px}.tgt-marker-top-five-row>strong{font-size:12px}}
+        .tgt-marker-live-panel{position:fixed;inset:0;z-index:1000;height:100dvh;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 0 calc(40px + env(safe-area-inset-bottom));background:#f3efe6}.tgt-marker-live-header{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;min-height:68px;padding:10px 18px;color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935);border-bottom:1px solid rgba(240,207,130,.35)}.tgt-marker-live-header strong{text-align:center;font-size:20px}.tgt-marker-live-back,.tgt-marker-live-refresh{min-height:42px;padding:0 14px;border:1px solid rgba(240,207,130,.45);border-radius:999px;color:#f7df99;background:rgba(2,27,20,.48);font-weight:900;cursor:pointer}.tgt-marker-live-back{justify-self:start}.tgt-marker-live-refresh{justify-self:end}.tgt-marker-live-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:720px;margin:20px auto 12px;padding:8px;border-radius:16px;background:#e4eade}.tgt-marker-live-toggle button{min-height:46px;border:0;border-radius:12px;color:#244539;background:transparent;font-weight:900;cursor:pointer}.tgt-marker-live-toggle button.active{color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935)}.tgt-marker-live-table{width:min(960px,calc(100% - 24px));margin:0 auto;border-radius:18px;background:#fff;box-shadow:0 18px 50px rgba(18,48,36,.14)}.tgt-marker-live-table table{width:100%;border-collapse:collapse}.tgt-marker-live-table thead{color:#f7df99;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-marker-live-table th{padding:15px 12px;color:#f7df99!important;border-bottom:1px solid rgba(240,207,130,.28);font-size:11px;letter-spacing:.1em;text-transform:uppercase}.tgt-marker-live-table td{padding:15px 12px;border-bottom:1px solid #e5ebe6;background:#fffdf8}.tgt-marker-live-table .player-name{color:#103d2d;font-weight:900}@media(max-width:600px){.tgt-marker-live-header{grid-template-columns:auto 1fr auto;padding:10px}.tgt-marker-live-header strong{font-size:17px}.tgt-marker-live-back,.tgt-marker-live-refresh{padding:0 10px}.tgt-marker-live-toggle{margin:12px}.tgt-marker-live-table{width:calc(100% - 12px)}.tgt-marker-live-table table{min-width:0!important}.tgt-marker-live-table th,.tgt-marker-live-table td{padding:13px 8px}.tgt-marker-live-table .player-name{font-size:14px}}
         .tgt-marker-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:22px;background:#f4f0e6}.tgt-marker-kpi{min-height:118px;padding:18px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;border:1px solid rgba(236,201,115,.48);border-radius:18px;background:linear-gradient(145deg,#052a1f,#0a4935);box-shadow:0 12px 28px rgba(3,31,23,.14)}.tgt-marker-kpi span{color:#cdb46d;font-size:10px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}.tgt-marker-kpi strong{color:#f7df99;font-family:Georgia,serif;font-size:clamp(21px,2.2vw,27px);line-height:1.18}.tgt-marker-progress{grid-column:1/-1;min-height:100px}@media(max-width:700px){.tgt-marker-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}.tgt-marker-kpi{min-height:100px;padding:14px 9px;gap:12px}.tgt-marker-kpi strong{font-size:19px}.tgt-marker-progress{grid-column:1/-1}}@media(max-width:390px){.tgt-marker-kpis{grid-template-columns:1fr}.tgt-marker-progress{grid-column:auto}}
       `}</style>
       <style>{`
@@ -8120,7 +7873,7 @@ function MarkerDashboard({
                         : entry.holesPlayed ?? entry.thru ?? 0;
                       return (
                         <tr key={entry.playerId ?? entry.teamId ?? entry.id ?? index}>
-                          <td className="position-column tgt-position-cell"><span className={`position-badge position-${index + 1}`}>{index + 1}</span><PositionMovement value={isIndividual ? (markerRoundIndividualMovements[String(entry.playerId)] ?? 0) : (markerRoundTeamMovements[String(entry.teamId ?? entry.id)] ?? 0)} /></td>
+                          <td className="position-column tgt-position-cell"><span className={`position-badge position-${index + 1}`}>{index + 1}</span></td>
                           <td><span className="player-name">{isIndividual ? entry.playerName : entry.teamName ?? entry.name ?? "Ukendt hold"}</span></td>
                           <td className="number-column tgt-live-to-par" style={getLeaderboardScoreStyle(holesPlayed === 0 ? 0 : score)}>{holesPlayed === 0 ? "E" : formatScore(score)}</td>
                           <td className="number-column tgt-live-thru">{holesPlayed}</td>

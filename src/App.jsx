@@ -216,28 +216,71 @@ function getPlayerPlayingHandicap(player, roundData = null) {
 // Retter livescoren til NETTO i forhold til par.
 // Handicapslag fordeles efter spillerens SPH og hullets stroke index.
 function normalizeIndividualLiveLeaderboard(leaderboard = [], roundData = null) {
+  const roundHoles = roundData?.holes ?? roundData?.courseHoles ?? [];
+  const roundHoleByNumber = new Map(
+    roundHoles.map((hole, index) => [
+      Number(hole?.holeNumber ?? hole?.hole_number ?? index + 1),
+      hole,
+    ])
+  );
+
   return leaderboard.map((player) => {
     const playingHandicap = getPlayerPlayingHandicap(player, roundData);
-    const scorecard = (player?.scorecard ?? []).map((hole) => {
-      const strokesValue = hole?.strokes ?? hole?.grossStrokes ?? hole?.gross_strokes;
+    const rawScorecard = player?.scorecard ?? [];
+
+    const scorecard = rawScorecard.map((hole, index) => {
+      const holeNumber = Number(
+        hole?.holeNumber ?? hole?.hole_number ?? roundHoles[index]?.hole_number ?? index + 1
+      );
+      const courseHole = roundHoleByNumber.get(holeNumber) ?? roundHoles[index] ?? {};
+
+      const strokesValue =
+        hole?.strokes ??
+        hole?.grossStrokes ??
+        hole?.gross_strokes ??
+        hole?.score ??
+        hole?.grossScore ??
+        hole?.gross_score;
       const strokes =
         strokesValue === null || strokesValue === undefined || strokesValue === ""
           ? null
           : Number(strokesValue);
-      const par = Number(hole?.par);
+
+      const par = Number(hole?.par ?? courseHole?.par);
       const strokeIndex = Number(
-        hole?.strokeIndex ?? hole?.stroke_index ?? hole?.index
+        hole?.strokeIndex ??
+        hole?.stroke_index ??
+        courseHole?.strokeIndex ??
+        courseHole?.stroke_index
       );
+
       const savedReceivedValue =
-        hole?.strokesReceived ?? hole?.strokes_received;
+        hole?.strokesReceived ??
+        hole?.strokes_received ??
+        hole?.receivedStrokes ??
+        hole?.received_strokes ??
+        hole?.handicapStrokes ??
+        hole?.handicap_strokes;
       const savedReceived = Number(savedReceivedValue);
-      const strokesReceived =
-        savedReceivedValue !== null &&
-        savedReceivedValue !== undefined &&
-        savedReceivedValue !== "" &&
-        Number.isFinite(savedReceived)
+      // Backendens live-scorekort kan sende strokesReceived: 0 som standard.
+      // Det må ikke overstyre den korrekte handicapfordeling. Når SPH og
+      // stroke index findes, beregner vi derfor altid slagene lokalt.
+      const calculatedReceived = getAllocatedStrokes(
+        playingHandicap,
+        strokeIndex
+      );
+      const canCalculateReceived =
+        Number.isFinite(Number(playingHandicap)) &&
+        Number.isFinite(strokeIndex);
+      const strokesReceived = canCalculateReceived
+        ? calculatedReceived
+        : savedReceivedValue !== null &&
+            savedReceivedValue !== undefined &&
+            savedReceivedValue !== "" &&
+            Number.isFinite(savedReceived)
           ? savedReceived
-          : getAllocatedStrokes(playingHandicap, strokeIndex);
+          : 0;
+
       const netStrokes =
         Number.isFinite(strokes) && Number.isFinite(strokesReceived)
           ? strokes - strokesReceived
@@ -248,27 +291,29 @@ function normalizeIndividualLiveLeaderboard(leaderboard = [], roundData = null) 
           : null;
 
       return {
+        ...courseHole,
         ...hole,
-        strokeIndex: Number.isFinite(strokeIndex) ? strokeIndex : hole?.strokeIndex,
+        holeNumber,
+        par: Number.isFinite(par) ? par : null,
+        strokeIndex: Number.isFinite(strokeIndex) ? strokeIndex : null,
+        strokes: Number.isFinite(strokes) ? strokes : null,
         strokesReceived,
         netStrokes,
         toPar,
       };
     });
 
-    const playedHoles = scorecard.filter(
-      (hole) =>
-        hole?.strokes !== null &&
-        hole?.strokes !== undefined &&
-        hole?.strokes !== "" &&
-        Number.isFinite(Number(hole.strokes))
-    );
+    const playedHoles = scorecard.filter((hole) => Number.isFinite(hole.strokes));
     const grossStrokes = playedHoles.reduce(
-      (total, hole) => total + Number(hole.strokes),
+      (total, hole) => total + hole.strokes,
+      0
+    );
+    const netStrokes = playedHoles.reduce(
+      (total, hole) => total + Number(hole.netStrokes),
       0
     );
     const scoreToPar = playedHoles.reduce(
-      (total, hole) => total + Number(hole.toPar ?? 0),
+      (total, hole) => total + Number(hole.toPar),
       0
     );
 
@@ -278,11 +323,11 @@ function normalizeIndividualLiveLeaderboard(leaderboard = [], roundData = null) 
       scorecard,
       holesPlayed: playedHoles.length,
       grossStrokes,
+      netStrokes,
       scoreToPar,
     };
   });
 }
-
 function formatDate(date) {
   if (!date) {
     return "Ikke angivet";
@@ -1233,7 +1278,7 @@ function Leaderboard({ onOpenLogin }) {
       eyebrow: "Live fra sæsonen",
       title: liveData?.round?.name ?? "Runde 6 live",
       description:
-        "Bruttoscoren vises i forhold til par og opdateres automatisk, når markørerne gemmer et hul.",
+        "Nettoscoren vises i forhold til par og opdateres automatisk, når markørerne gemmer et hul.",
     },
     team: {
       eyebrow: "Holdturnering",

@@ -213,6 +213,76 @@ function getPlayerPlayingHandicap(player, roundData = null) {
   return allocatedStrokes > 0 ? allocatedStrokes : null;
 }
 
+// Retter livescoren til NETTO i forhold til par.
+// Handicapslag fordeles efter spillerens SPH og hullets stroke index.
+function normalizeIndividualLiveLeaderboard(leaderboard = [], roundData = null) {
+  return leaderboard.map((player) => {
+    const playingHandicap = getPlayerPlayingHandicap(player, roundData);
+    const scorecard = (player?.scorecard ?? []).map((hole) => {
+      const strokesValue = hole?.strokes ?? hole?.grossStrokes ?? hole?.gross_strokes;
+      const strokes =
+        strokesValue === null || strokesValue === undefined || strokesValue === ""
+          ? null
+          : Number(strokesValue);
+      const par = Number(hole?.par);
+      const strokeIndex = Number(
+        hole?.strokeIndex ?? hole?.stroke_index ?? hole?.index
+      );
+      const savedReceivedValue =
+        hole?.strokesReceived ?? hole?.strokes_received;
+      const savedReceived = Number(savedReceivedValue);
+      const strokesReceived =
+        savedReceivedValue !== null &&
+        savedReceivedValue !== undefined &&
+        savedReceivedValue !== "" &&
+        Number.isFinite(savedReceived)
+          ? savedReceived
+          : getAllocatedStrokes(playingHandicap, strokeIndex);
+      const netStrokes =
+        Number.isFinite(strokes) && Number.isFinite(strokesReceived)
+          ? strokes - strokesReceived
+          : null;
+      const toPar =
+        netStrokes !== null && Number.isFinite(par)
+          ? netStrokes - par
+          : null;
+
+      return {
+        ...hole,
+        strokeIndex: Number.isFinite(strokeIndex) ? strokeIndex : hole?.strokeIndex,
+        strokesReceived,
+        netStrokes,
+        toPar,
+      };
+    });
+
+    const playedHoles = scorecard.filter(
+      (hole) =>
+        hole?.strokes !== null &&
+        hole?.strokes !== undefined &&
+        hole?.strokes !== "" &&
+        Number.isFinite(Number(hole.strokes))
+    );
+    const grossStrokes = playedHoles.reduce(
+      (total, hole) => total + Number(hole.strokes),
+      0
+    );
+    const scoreToPar = playedHoles.reduce(
+      (total, hole) => total + Number(hole.toPar ?? 0),
+      0
+    );
+
+    return {
+      ...player,
+      playingHandicap,
+      scorecard,
+      holesPlayed: playedHoles.length,
+      grossStrokes,
+      scoreToPar,
+    };
+  });
+}
+
 function formatDate(date) {
   if (!date) {
     return "Ikke angivet";
@@ -868,7 +938,10 @@ function Leaderboard({ onOpenLogin }) {
 
   const liveLeaderboard = sortIndividualLeaderboard(
     applyIndividualBonuses({
-      leaderboard: liveData?.leaderboard ?? [],
+      leaderboard: normalizeIndividualLiveLeaderboard(
+        liveData?.leaderboard ?? [],
+        liveData?.round ?? null
+      ),
       approvedBonuses,
     })
   );
@@ -7693,7 +7766,16 @@ function MarkerDashboard({
     };
   }, [assignment?.round_id, assignment?.rounds?.round_number, assignment?.rounds?.live_leaderboard_mode]);
 
-  const markerIndividualLeaderboard = markerLiveData?.leaderboard ?? [];
+  const markerIndividualLeaderboard = sortIndividualLeaderboard(
+    normalizeIndividualLiveLeaderboard(
+      markerLiveData?.leaderboard ?? [],
+      {
+        ...(markerLiveData?.round ?? {}),
+        tee: markerTee ?? markerLiveData?.round?.tee ?? null,
+        holes: markerLiveData?.holes ?? holes,
+      }
+    )
+  );
   const markerTeamLeaderboard = markerTeamData?.leaderboard ?? [];
   const markerIndividualMovements = usePositionChanges(markerIndividualTopFive, (entry) => entry.id, markerScoreEventVersion);
   const markerTeamMovements = usePositionChanges(markerTeamTopFive, (entry) => entry.id, markerScoreEventVersion);

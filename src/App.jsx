@@ -136,6 +136,128 @@ function normalizeTeamScorecard(scorecard = []) {
     };
   });
 }
+function getTeamPlayerIds(team = {}) {
+  const direct = [
+    team.playerOneId, team.player_one_id, team.player1Id, team.player_1_id,
+    team.playerTwoId, team.player_two_id, team.player2Id, team.player_2_id,
+  ];
+  const nested = [
+    ...(team.members ?? []),
+    ...(team.players ?? []),
+    ...(team.teamMembers ?? team.team_members ?? []),
+  ].map((member) =>
+    member?.playerId ?? member?.player_id ?? member?.id ?? member?.players?.id
+  );
+  return [...new Set([...direct, ...nested].filter(Boolean).map(String))];
+}
+
+// Beregn holdets best ball direkte fra de allerede netto-normaliserede
+// individuelle scorekort. Dermed kan en brutto-score fra team-viewet ikke
+// overstyre handicapslagene.
+function normalizeTeamLiveLeaderboard(
+  teamLeaderboard = [],
+  individualLeaderboard = []
+) {
+  const individualById = new Map(
+    individualLeaderboard.map((player) => [
+      String(player?.playerId ?? player?.player_id ?? player?.id),
+      player,
+    ])
+  );
+
+  return teamLeaderboard
+    .map((team) => {
+      const playerIds = getTeamPlayerIds(team);
+      const teamPlayers = playerIds
+        .map((id) => individualById.get(id))
+        .filter(Boolean);
+
+      // Hvis team-helperen ikke sender medlems-id'er, beholdes dens scorekort.
+      // Når id'erne findes, er de individuelle netto-scorekort sandhedskilden.
+      if (teamPlayers.length < 2) {
+        const scorecard = normalizeTeamScorecard(team?.scorecard ?? []);
+        return {
+          ...team,
+          scorecard,
+          holesPlayed: scorecard.filter((hole) =>
+            Number.isFinite(Number(hole?.netStrokes))
+          ).length,
+          scoreToPar: getTeamScoreToPar({ ...team, scorecard }),
+        };
+      }
+
+      const holesByPlayer = teamPlayers.map((player) =>
+        new Map(
+          (player.scorecard ?? []).map((hole, index) => [
+            Number(hole?.holeNumber ?? hole?.hole_number ?? index + 1),
+            hole,
+          ])
+        )
+      );
+      const holeNumbers = [...new Set(
+        holesByPlayer.flatMap((holes) => [...holes.keys()])
+      )].sort((a, b) => a - b);
+
+      const scorecard = holeNumbers.map((holeNumber) => {
+        const playerHoles = holesByPlayer.map((holes) => holes.get(holeNumber));
+        const allPlayersScored = playerHoles.every((hole) =>
+          hole && Number.isFinite(Number(hole.strokes))
+        );
+        const template = playerHoles.find(Boolean) ?? {};
+        const par = Number(template.par);
+        if (!allPlayersScored || !Number.isFinite(par)) {
+          return {
+            ...template,
+            holeNumber,
+            netStrokes: null,
+            toPar: null,
+          };
+        }
+        const bestNetStrokes = Math.min(
+          ...playerHoles.map((hole) => Number(hole.netStrokes))
+        );
+        return {
+          ...template,
+          holeNumber,
+          strokes: bestNetStrokes,
+          netStrokes: bestNetStrokes,
+          toPar: bestNetStrokes - par,
+        };
+      });
+      const playedHoles = scorecard.filter((hole) =>
+        Number.isFinite(Number(hole.netStrokes))
+      );
+      const scoreToPar = playedHoles.reduce(
+        (total, hole) => total + Number(hole.netStrokes) - Number(hole.par),
+        0
+      );
+
+      return {
+        ...team,
+        scorecard,
+        holesPlayed: playedHoles.length,
+        thru: playedHoles.length,
+        netStrokes: playedHoles.reduce(
+          (total, hole) => total + Number(hole.netStrokes),
+          0
+        ),
+        scoreToPar,
+        score_to_par: scoreToPar,
+        bestBallScore: scoreToPar,
+      };
+    })
+    .sort((a, b) => {
+      const scoreDifference =
+        Number(getTeamScoreToPar(a) ?? Infinity) -
+        Number(getTeamScoreToPar(b) ?? Infinity);
+      return scoreDifference ||
+        String(a.teamName ?? a.name ?? "").localeCompare(
+          String(b.teamName ?? b.name ?? ""),
+          "da"
+        );
+    });
+}
+
 function getTeamScoreToPar(team) {
   const scorecard = normalizeTeamScorecard(team?.scorecard ?? []);
   const playedHoles = scorecard.filter(
@@ -1013,7 +1135,10 @@ function Leaderboard({ onOpenLogin }) {
           return scoreDifference || a.player_name.localeCompare(b.player_name, "da");
         })
     : standings;
-  const teamLeaderboard = teamData?.leaderboard ?? [];
+  const teamLeaderboard = normalizeTeamLiveLeaderboard(
+    teamData?.leaderboard ?? [],
+    liveLeaderboard
+  );
   const liveTeamById = new Map(
     teamLeaderboard.map((team) => [team.teamId ?? team.id, team])
   );
@@ -7262,8 +7387,20 @@ function MarkerDashboard({
         };
         historyByTeam[result.team_id].rounds.push(Number(result.score));
       });
+      const normalizedIndividual = normalizeIndividualLiveLeaderboard(
+        individualData?.leaderboard ?? [],
+        {
+          ...(individualData?.round ?? {}),
+          tee: markerTee ?? individualData?.round?.tee ?? null,
+          holes: individualData?.holes ?? holes,
+        }
+      );
+      const normalizedTeams = normalizeTeamLiveLeaderboard(
+        teamData?.leaderboard ?? [],
+        normalizedIndividual
+      );
       const liveTeamById = new Map(
-        (teamData?.leaderboard ?? []).map((team) => [team.teamId ?? team.id, team])
+        normalizedTeams.map((team) => [team.teamId ?? team.id, team])
       );
       const teamTopFive = Object.values(historyByTeam)
         .map((team) => {
@@ -7821,7 +7958,10 @@ function MarkerDashboard({
       }
     )
   );
-  const markerTeamLeaderboard = markerTeamData?.leaderboard ?? [];
+  const markerTeamLeaderboard = normalizeTeamLiveLeaderboard(
+    markerTeamData?.leaderboard ?? [],
+    markerIndividualLeaderboard
+  );
   const markerIndividualMovements = usePositionChanges(markerIndividualTopFive, (entry) => entry.id, markerScoreEventVersion);
   const markerTeamMovements = usePositionChanges(markerTeamTopFive, (entry) => entry.id, markerScoreEventVersion);
   const markerRoundIndividualMovements = usePositionChanges(markerIndividualLeaderboard, (entry) => entry.playerId, markerScoreEventVersion);

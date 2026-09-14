@@ -60,6 +60,8 @@ import {
   updateFlight,
 } from "./lib/flightAdmin";
 
+const ACTIVE_SEASON = 2027;
+
 const LUBKER_FINAL_COURSES = [
   { clubName: "Lübker Golf Klub", courseName: "Sand/Forest",
     holes: [[1,5,3],[2,3,17],[3,4,11],[4,3,13],[5,5,1],[6,3,15],[7,4,7],[8,5,5],[9,4,9],[10,5,2],[11,4,6],[12,5,4],[13,4,8],[14,3,18],[15,4,12],[16,3,16],[17,4,14],[18,4,10]],
@@ -493,6 +495,14 @@ function formatTime(time) {
   return time.slice(0, 5);
 }
 
+function getManualFinalBase(roundScores = []) {
+  const scores = roundScores.map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+  if (scores.length < 3) return { eligible:false, countingScore:null, halvedScore:null, usedScores:[] };
+  const usedScores = scores.slice(0,4);
+  if (usedScores.length === 3) usedScores.push(Math.max(...usedScores));
+  const countingScore = usedScores.reduce((sum,score)=>sum+score,0);
+  return { eligible:true, countingScore, halvedScore:Math.trunc(countingScore/2), usedScores };
+}
 function sortStandings(data) {
   return [...(data ?? [])].sort((a, b) => {
     const aQualified = a.counting_rounds === 4;
@@ -579,7 +589,7 @@ function SplitScorecard({ scorecard = [], handicapIndex = null, playingHandicap 
             <span key={hole.holeNumber}>
               {hole.strokes === null || hole.strokes === undefined
                 ? "–"
-                : <span style={getScoreMarkStyle(hole.toPar)}>{hole.strokes}</span>}
+                : <span style={getScoreMarkStyle(Number(hole.strokes) - Number(hole.par))}>{hole.strokes}</span>}
             </span>
           ))}
           <strong>{ninePlayed.length ? nineGross : "–"}</strong>
@@ -720,19 +730,38 @@ function ClosestToPinHoleSelector({ roundId, courseId, disabled = false }) {
     </section>
   );
 }
-function Leaderboard({ onOpenLogin }) {
-  const [mainTab, setMainTab] = useState("individual");
-  const [tab, setTab] = useState("season");
-  const [selectedSeason, setSelectedSeason] = useState(2026);
-  const [availableSeasons, setAvailableSeasons] = useState([2026, 2027]);
+function MitTgtBottomNav({ active = "profile", onProfile, onLeaderboard, onPlay, onLive, onMenu, playDisabled = false }) {
+  const items = [
+    { key: "profile", label: "Profil", action: onProfile, icon: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c.5-4.1 2.7-6.2 6.5-6.2s6 2.1 6.5 6.2"/></svg> },
+    { key: "leaderboard", label: "Stilling", action: onLeaderboard, icon: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M8.5 14.5 11 12l2 1.8 3.5-4"/></svg> },
+    { key: "play", label: "SPIL", action: onPlay, play: true },
+    { key: "live", label: "Live", action: onLive, icon: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 9-8 9-8-9 8-9Z"/><circle cx="12" cy="12" r="2.2"/></svg> },
+    { key: "menu", label: "Menu", action: onMenu, icon: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg> },
+  ];
+  return (
+    <nav className="tgt-fixed-bottom-nav" aria-label="Mit TGT navigation">
+      {items.map((item)=>(
+        <button key={item.key} type="button" className={`tgt-fixed-nav-item${item.play ? " tgt-fixed-nav-play" : ""}${active===item.key ? " is-active" : ""}`} onClick={item.action} disabled={item.play && playDisabled} aria-label={item.label} title={item.label}>
+          {item.play ? <span className="tgt-fixed-play-disc">SPIL</span> : <><span className="tgt-fixed-nav-icon">{item.icon}</span><small>{item.label}</small></>}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavigate = null, isAuthenticated = false }) {
+  const [mainTab, setMainTab] = useState(initialPortalView === "team" ? "team" : "individual");
+  const [tab, setTab] = useState(initialPortalView === "live-leaderboard" ? "live" : initialPortalView === "team" ? "team" : "season");
+  const [selectedSeason, setSelectedSeason] = useState(ACTIVE_SEASON);
+  const [availableSeasons] = useState([ACTIVE_SEASON]);
   const [profileSearch, setProfileSearch] = useState("");
   const [directoryPlayerId, setDirectoryPlayerId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [individualFullscreen, setIndividualFullscreen] = useState(false);
-  const [teamFullscreen, setTeamFullscreen] = useState(false);
-  const [liveFullscreen, setLiveFullscreen] = useState(false);
+  const [individualFullscreen, setIndividualFullscreen] = useState(initialPortalView === "leaderboard");
+  const [teamFullscreen, setTeamFullscreen] = useState(initialPortalView === "team");
+  const [liveFullscreen, setLiveFullscreen] = useState(initialPortalView === "live-leaderboard");
   const [liveView, setLiveView] = useState("individual");
-  const [panelFullscreen, setPanelFullscreen] = useState(null);
+  const [panelFullscreen, setPanelFullscreen] = useState(["rounds","profiles","hall","closest"].includes(initialPortalView) ? initialPortalView : null);
   const [standings, setStandings] = useState([]);
   const [liveData, setLiveData] = useState(null);
   const [teamData, setTeamData] = useState(null);
@@ -948,23 +977,19 @@ function Leaderboard({ onOpenLogin }) {
 
       const teamStandings = Object.values(teamHistoryById)
         .map((team) => {
-          const bestFour = [...team.rounds]
-            .sort((a, b) => a.score - b.score)
-            .slice(0, 4);
-          const countingScore = bestFour.reduce(
-            (total, round) => total + round.score,
-            0
-          );
+          const manualBase = getManualFinalBase(team.rounds.map((round)=>round.score));
+          const bestFour = manualBase.usedScores;
+          const countingScore = manualBase.countingScore;
           return {
             ...team,
             roundsPlayed: team.rounds.length,
             countingScore,
-            halvedScore: Math.trunc(countingScore / 2),
+            halvedScore: null,
           };
         })
         .sort((a, b) =>
-          a.halvedScore !== b.halvedScore
-            ? a.halvedScore - b.halvedScore
+          Number(a.halvedScore ?? a.countingScore ?? Infinity) !== Number(b.halvedScore ?? b.countingScore ?? Infinity)
+            ? Number(a.halvedScore ?? a.countingScore ?? Infinity) - Number(b.halvedScore ?? b.countingScore ?? Infinity)
             : a.teamName.localeCompare(b.teamName, "da")
         );
       setHistoricalTeamStandings(teamStandings);
@@ -986,9 +1011,14 @@ function Leaderboard({ onOpenLogin }) {
           : Promise.resolve(null),
       ]);
 
-      const currentLiveRound = (roundRows ?? []).find(
+      let currentLiveRound = (roundRows ?? []).find(
         (round) => round.id === currentLiveData?.round?.id
       );
+      if (!currentLiveRound || currentLiveRound.status !== "live") {
+        currentLiveData = null;
+        currentTeamData = null;
+        currentLiveRound = null;
+      }
       const liveTeeId =
         currentLiveData?.round?.teeId ??
         currentLiveData?.round?.tee_id ??
@@ -1330,7 +1360,8 @@ function Leaderboard({ onOpenLogin }) {
   }, [menuOpen]);
 
   function switchSeason(season) {
-    setSelectedSeason(season);
+    if (Number(season) !== ACTIVE_SEASON) return;
+    setSelectedSeason(ACTIVE_SEASON);
     setSelectedPlayer(null);
     setSelectedTeamId(null);
     setProfilePlayerId(null);
@@ -1346,6 +1377,9 @@ function Leaderboard({ onOpenLogin }) {
     setMenuOpen(false);
   }
 
+  function openPublicHome() {
+    setIndividualFullscreen(false); setTeamFullscreen(false); setLiveFullscreen(false); setPanelFullscreen(null); setMenuOpen(false); setSelectedPlayer(null); setSelectedPlayerMode(null); setSelectedTeamId(null);
+  }
   function openIndividualFullscreen() {
     setMainTab("individual");
     setTab("season");
@@ -1418,13 +1452,14 @@ function Leaderboard({ onOpenLogin }) {
       title: individualLiveCumulativeActive ? "Samlet individuel stilling live" : "Aktuel stilling",
       description: individualLiveCumulativeActive
         ? `Den individuelle placering inkluderer ${liveData?.round?.name ?? "den valgte runde"} og opdateres automatisk hul for hul.`
-        : "De fire laveste rundescores tæller. Den samlede score halveres efter fire tællende runder.",
+        : "De fire laveste rundescores tæller. Scoren halveres først manuelt af administratoren før finalen.",
     },
     live: {
       eyebrow: "Live fra sæsonen",
-      title: liveData?.round?.name ?? "Runde 6 live",
-      description:
-        "Nettoscoren vises i forhold til par og opdateres automatisk, når markørerne gemmer et hul.",
+      title: liveData?.round?.name ?? "Ingen aktiv runde",
+      description: liveData?.round
+        ? "Nettoscoren vises i forhold til par og opdateres automatisk, når et hul gemmes."
+        : "Livescore vises automatisk, når en runde er sat til live.",
     },
     team: {
       eyebrow: "Holdturnering",
@@ -1468,9 +1503,33 @@ function Leaderboard({ onOpenLogin }) {
   const currentHeading = headings[tab];
 
   return (
-    <div className={`app tgt-public-shell${individualFullscreen ? " tgt-individual-fullscreen-open" : ""}${teamFullscreen ? " tgt-team-fullscreen-open" : ""}${liveFullscreen ? " tgt-live-fullscreen-open" : ""}${panelFullscreen ? " tgt-panel-fullscreen-open" : ""}`}>
+    <div className={`app tgt-public-shell${onPortalNavigate ? " tgt-mit-tgt-universe" : ""}${individualFullscreen ? " tgt-individual-fullscreen-open" : ""}${teamFullscreen ? " tgt-team-fullscreen-open" : ""}${liveFullscreen ? " tgt-live-fullscreen-open" : ""}${panelFullscreen ? " tgt-panel-fullscreen-open" : ""}`}>
       <style>{`
-        .tgt-public-shell { background: #f3efe6; min-height: 100vh; }
+        .tgt-public-shell { background: #f3efe6; min-height: 100vh; } .tgt-mit-tgt-universe{padding-bottom:calc(96px + env(safe-area-inset-bottom))!important}
+        .tgt-mit-tgt-universe .main-content{padding-bottom:calc(28px + env(safe-area-inset-bottom))!important}.tgt-nav-glyph{position:relative!important;width:24px!important;height:24px!important;display:block!important;color:currentColor!important}.tgt-nav-profile:before{content:"";position:absolute;left:8px;top:2px;width:8px;height:8px;border:2px solid currentColor;border-radius:50%}.tgt-nav-profile:after{content:"";position:absolute;left:4px;bottom:1px;width:16px;height:9px;border:2px solid currentColor;border-radius:12px 12px 5px 5px}.tgt-nav-circle{border:2px solid currentColor;border-radius:50%;box-shadow:inset 0 0 0 4px transparent}.active .tgt-nav-circle{box-shadow:inset 0 0 0 5px currentColor}.tgt-nav-diamond{width:17px!important;height:17px!important;margin:3px!important;border:2px solid currentColor;transform:rotate(45deg);border-radius:2px}.active .tgt-nav-diamond{background:currentColor}.tgt-nav-menu:before,.tgt-nav-menu:after,.tgt-nav-menu{border-top:2px solid currentColor}.tgt-nav-menu:before,.tgt-nav-menu:after{content:"";position:absolute;left:0;width:24px}.tgt-nav-menu:before{top:6px}.tgt-nav-menu:after{top:14px}.tgt-mobile-bottom-nav .tgt-bottom-play{overflow:visible!important}.tgt-mobile-bottom-nav .tgt-bottom-play-icon{width:56px!important;height:56px!important;display:grid!important;place-items:center!important;border:2px solid #f3d47e!important;border-radius:50%!important;color:#063326!important;background:linear-gradient(145deg,#ffe9a5,#c79238)!important;box-shadow:0 8px 22px rgba(0,0,0,.28)!important;font-size:13px!important;font-weight:1000!important;letter-spacing:.08em!important;transform:translateY(-10px)!important}.tgt-mobile-bottom-nav{position:fixed!important;left:50%!important;right:auto!important;bottom:0!important;z-index:120!important;width:min(620px,100%)!important;height:calc(64px + env(safe-area-inset-bottom))!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;align-items:center!important;transform:translateX(-50%)!important;padding:5px 8px calc(5px + env(safe-area-inset-bottom))!important;border-top:1px solid rgba(240,207,130,.26)!important;background:rgba(4,37,27,.985)!important;box-shadow:0 -10px 30px rgba(2,24,17,.22)!important;backdrop-filter:blur(18px)!important;overflow:visible!important}.tgt-mobile-bottom-nav button{position:relative;min-width:0!important;height:50px!important;min-height:50px!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;padding:3px 1px!important;border:0!important;border-radius:13px!important;background:transparent!important;color:rgba(247,223,153,.62)!important;font-weight:900!important;cursor:pointer!important}.tgt-mobile-bottom-nav button>span:not(.tgt-bottom-play-icon){height:19px;display:grid;place-items:center;font-size:17px;line-height:1}.tgt-mobile-bottom-nav button small{display:none!important}.tgt-mobile-bottom-nav button.active{color:#f7df99!important;background:rgba(240,207,130,.08)!important}.tgt-mobile-bottom-nav .tgt-bottom-play{align-self:center!important;width:58px!important;height:58px!important;min-height:58px!important;justify-self:center!important;margin:-17px auto 0!important;padding:0!important;border-radius:50%!important;background:transparent!important}.tgt-bottom-play-icon{width:54px;height:54px;display:grid;place-items:center;border:2px solid #f4d98d;border-radius:50%;background:linear-gradient(145deg,#e9cb74,#ae7625);box-shadow:0 7px 19px rgba(0,0,0,.28),0 0 0 4px rgba(4,37,27,.985);font-size:23px;line-height:1}.tgt-mobile-bottom-nav .tgt-bottom-play small{display:none!important}
+        @media (max-width:700px){
+          .tgt-public-shell,.tgt-player-shell{padding-bottom:calc(78px + env(safe-area-inset-bottom))!important}
+          .tgt-mobile-bottom-nav{position:fixed!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-template-rows:56px!important;align-items:center!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;max-width:none!important;height:calc(64px + env(safe-area-inset-bottom))!important;min-height:64px!important;margin:0!important;padding:4px 8px calc(4px + env(safe-area-inset-bottom))!important;transform:none!important;border-radius:0!important;overflow:visible!important;background:rgba(4,37,27,.985)!important}
+          .tgt-mobile-bottom-nav button{display:grid!important;place-items:center!important;position:relative!important;width:100%!important;min-width:0!important;max-width:none!important;height:50px!important;min-height:50px!important;margin:0!important;padding:0!important;flex:0 0 auto!important;border-radius:12px!important;color:rgba(247,223,153,.65)!important;background:transparent!important}
+          .tgt-mobile-bottom-nav button.active{color:#f7df99!important;background:rgba(240,207,130,.08)!important}
+          .tgt-mobile-bottom-nav button small{display:none!important}
+          .tgt-mobile-bottom-nav .tgt-bottom-play{display:grid!important;place-items:center!important;justify-self:center!important;align-self:center!important;width:56px!important;min-width:56px!important;max-width:56px!important;height:56px!important;min-height:56px!important;margin:-18px auto 0!important;padding:0!important;border-radius:50%!important;background:transparent!important}
+          .tgt-mobile-bottom-nav .tgt-bottom-play small{display:none!important}
+          .tgt-bottom-play-icon{width:52px!important;height:52px!important;font-size:22px!important;border-width:2px!important}
+          .tgt-player-head{padding:16px 14px!important}
+          .tgt-player-head h1{font-size:36px!important;line-height:1.02!important}
+          .tgt-player-actions{width:auto!important;align-self:stretch!important}
+          .tgt-player-actions button{width:100%!important;min-height:42px!important}
+          .tgt-player-intro{gap:12px!important;padding:2px 2px!important}
+          .tgt-player-avatar{width:48px!important;height:48px!important;min-width:48px!important;font-size:17px!important}
+          .tgt-player-primary{min-height:48px!important;margin:10px 0 2px!important;font-size:15px!important}
+          .tgt-player-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;margin:11px 0 14px!important}
+          .tgt-player-kpi{min-height:78px!important;padding:10px!important;border-radius:14px!important}
+          .tgt-player-kpi span{font-size:9px!important;letter-spacing:.08em!important}
+          .tgt-player-kpi strong{font-size:19px!important}
+          .tgt-player-grid{grid-template-columns:1fr!important;gap:12px!important}
+        }
+
         .tgt-public-topbar { position: relative; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: 14px clamp(18px, 4vw, 54px); background: rgba(7, 43, 31, .96); color: #fff; backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.12); }
         .tgt-public-shell main { width: 100%; }
         .tgt-public-shell .leaderboard-card { width: min(1180px, calc(100% - 32px)); margin-left: auto; margin-right: auto; }
@@ -1955,7 +2014,7 @@ function Leaderboard({ onOpenLogin }) {
           }
         }
         .tgt-wordmark-mark { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #d7b469; border-radius: 50%; color: #f0cf82; font-family: Georgia, serif; font-size: 17px; font-weight: 900; letter-spacing: .04em; text-shadow: 0 1px 14px rgba(215,180,105,.35); }
-        .tgt-menu-button { min-width: 46px; min-height: 46px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: transparent; color: #fff; cursor: pointer; font-size: 24px; }
+        .tgt-menu-button { width:46px; height:46px; min-width:46px; padding:0; display:grid; place-items:center; border:1px solid rgba(255,255,255,.22); border-radius:50%; background:transparent; color:#fff; cursor:pointer; }.tgt-menu-icon{position:relative;width:20px;height:14px;display:block}.tgt-menu-icon:before,.tgt-menu-icon:after,.tgt-menu-icon span{content:"";position:absolute;left:0;width:20px;height:2px;border-radius:2px;background:#f5dc93}.tgt-menu-icon:before{top:0}.tgt-menu-icon span{top:6px}.tgt-menu-icon:after{top:12px}
         .tgt-premium-hero { position: relative; overflow: hidden; padding: clamp(54px, 9vw, 110px) clamp(20px, 7vw, 92px); color: #fff; background: radial-gradient(circle at 78% 20%, rgba(215,180,105,.24), transparent 28%), linear-gradient(135deg, #062f22 0%, #0b5239 58%, #123a2d 100%); }
         .tgt-premium-hero:after { content: ""; position: absolute; right: -80px; bottom: -170px; width: 480px; height: 480px; border: 1px solid rgba(255,255,255,.1); border-radius: 50%; box-shadow: 0 0 0 55px rgba(255,255,255,.035), 0 0 0 110px rgba(255,255,255,.025); }
         .tgt-hero-inner { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; }
@@ -1970,7 +2029,7 @@ function Leaderboard({ onOpenLogin }) {
         .tgt-menu-backdrop { position: fixed; inset: 0; z-index: 45; background: rgba(2,20,14,.58); backdrop-filter: blur(3px); }
         .tgt-drawer { position: fixed; top: 0; right: 0; z-index: 50; width: min(390px, 92vw); height: 100dvh; padding: 22px; background: #f7f3ea; color: #10271e; box-shadow: -20px 0 60px rgba(0,0,0,.25); overflow-y: auto; }
         .tgt-drawer-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid #d9d3c8; }
-        .tgt-drawer-close { min-width: 44px; min-height: 44px; border: 1px solid #d5cec2; border-radius: 50%; background: #fff; font-size: 22px; cursor: pointer; }
+        .tgt-drawer-close{width:44px;height:44px;min-width:44px;padding:0;display:grid;place-items:center;border:1px solid #d5cec2;border-radius:50%;background:#fff;cursor:pointer}.tgt-close-icon{position:relative;width:18px;height:18px;display:block}.tgt-close-icon:before,.tgt-close-icon:after{content:"";position:absolute;top:8px;left:0;width:18px;height:2px;border-radius:2px;background:#173326}.tgt-close-icon:before{transform:rotate(45deg)}.tgt-close-icon:after{transform:rotate(-45deg)}
         .tgt-drawer-nav { display: grid; gap: 8px; margin-top: 20px; }
         .tgt-drawer-nav button { width: 100%; min-height: 52px; padding: 0 15px; text-align: left; border: 1px solid #dfd8cc; border-radius: 12px; background: #fff; color: #173326; font-weight: 750; cursor: pointer; }
         .tgt-public-shell .main-content { margin-top: -28px; position: relative; z-index: 3; }
@@ -2175,7 +2234,7 @@ function Leaderboard({ onOpenLogin }) {
           .tgt-marker-top-five-row>.tgt-score-with-movement .tgt-position-movement{min-width:22px;padding:2px 3px;font-size:8px}
           .tgt-position-movement{box-sizing:border-box}
         }
-        .tgt-course-database { width:min(1120px,100%); margin:0 auto 24px; padding:clamp(18px,3vw,28px); border:1px solid rgba(25,65,48,.12); border-radius:22px; background:#fffdf8; box-shadow:0 14px 38px rgba(18,48,36,.08); }
+        .tgt-course-database { width:min(1120px,100%); margin:0 auto 24px; padding:clamp(16px,2.5vw,24px); border:1px solid rgba(25,65,48,.12); border-radius:22px; background:#fffdf8; box-shadow:0 14px 38px rgba(18,48,36,.08); }
         .tgt-course-db-header { display:flex; align-items:center; justify-content:space-between; gap:20px; text-align:left; }
         .tgt-course-db-header h2,.tgt-course-db-header p { margin-top:4px; }
         .tgt-course-db-count { min-width:110px; padding:15px; display:flex; flex-direction:column; align-items:center; gap:7px; border-radius:16px; color:#f7df99; background:linear-gradient(145deg,#052a1f,#0a4935); }
@@ -2188,7 +2247,273 @@ function Leaderboard({ onOpenLogin }) {
         .tgt-hole-editor{margin-top:14px}.tgt-hole-editor-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.tgt-hole-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:14px 0}.tgt-hole-grid label{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:10px;border-radius:12px;background:#fff;border:1px solid rgba(25,65,48,.11);text-align:center}.tgt-hole-grid label>span{grid-column:1/-1;font-weight:900;color:#174332}.tgt-hole-grid input{width:100%;min-width:0;padding:8px;border:1px solid #d8e0da;border-radius:8px;text-align:center}.tgt-hole-grid small{color:#6a7b73;font-size:9px;text-transform:uppercase}.tgt-csv-import{margin-top:14px;text-align:center}.tgt-csv-import input{display:block;margin:14px auto}.tgt-csv-import button{max-width:320px}
         @media(max-width:820px){.tgt-course-db-layout{grid-template-columns:1fr}.tgt-course-list{max-height:280px}.tgt-hole-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
         @media(max-width:520px){.tgt-course-database{padding:14px}.tgt-course-db-header{align-items:stretch;flex-direction:column;text-align:center}.tgt-course-db-count{width:100%}.tgt-tee-form{grid-template-columns:1fr}.tgt-hole-editor-head{align-items:stretch;flex-direction:column}.tgt-hole-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-      `}</style>
+        /* Unified app experience: desktop and phone share the same hierarchy and controls. */
+        .tgt-public-shell{max-width:860px!important;margin:0 auto!important;box-shadow:0 0 70px rgba(3,31,23,.18)!important}
+        .tgt-public-topbar{position:sticky!important;top:0!important;z-index:80!important;min-height:64px!important;padding:9px 14px!important}
+        .tgt-public-topbar>div:last-child{display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:7px!important}
+        .tgt-public-login-choice{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:40px!important;padding:0 12px!important;border:1px solid rgba(240,207,130,.52)!important;border-radius:999px!important;color:#f7df99!important;background:rgba(2,27,20,.48)!important;font-size:10px!important;font-weight:900!important;letter-spacing:.06em!important;white-space:nowrap!important}
+        .tgt-public-marker-choice{color:#082b20!important;background:linear-gradient(135deg,#f7e4a0,#c99a42)!important}
+        .tgt-desktop-hall-button{display:none!important}
+        .tgt-premium-hero{min-height:0!important;padding:46px 18px 68px!important;text-align:center!important}
+        .tgt-premium-hero h1{font-size:clamp(42px,8vw,68px)!important}
+        .tgt-hero-meta{display:grid!important;gap:7px!important;width:100%!important}
+        .tgt-hero-actions{display:grid!important;grid-template-columns:1fr 1fr!important;width:min(560px,100%)!important;gap:10px!important}
+        .tgt-hero-actions>button{width:100%!important;margin:0!important}
+        .tgt-hero-marker-login{grid-column:1/-1!important}
+        .tgt-app-lobby{padding:20px 12px 96px!important}
+        .tgt-lobby-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+        .tgt-lobby-grid button{min-height:138px!important;border-radius:18px!important}
+        .tgt-public-shell .main-content{width:100%!important;padding-left:8px!important;padding-right:8px!important}
+        .tgt-public-shell .leaderboard-card{width:100%!important;border-radius:16px!important}
+        .tgt-public-shell .tgt-tabs{justify-content:center!important;flex-wrap:wrap!important;overflow:visible!important}
+        .tgt-public-shell .card-header{display:flex!important;flex-direction:column!important;gap:10px!important;text-align:center!important}
+        .tgt-public-shell .card-header>div:first-child{width:100%!important;text-align:center!important}
+        .tgt-public-shell .card-header>.live-badge{align-self:center!important}
+        .tgt-drawer{width:min(390px,92vw)!important}
+        @media(max-width:700px){
+          .tgt-public-shell{max-width:none!important;box-shadow:none!important}
+          .tgt-public-topbar{min-height:58px!important;padding:7px 9px!important}
+          .tgt-wordmark{gap:7px!important}.tgt-wordmark-mark{width:38px!important;height:38px!important;font-size:14px!important}
+          .tgt-public-login-choice{min-height:36px!important;padding:0 8px!important;font-size:8px!important}
+          .tgt-public-marker-choice{display:none!important}
+          .tgt-menu-button{width:38px!important;height:38px!important;min-width:38px!important}
+          .tgt-premium-hero{padding:35px 14px 50px!important}
+          .tgt-premium-hero h1{font-size:clamp(38px,14vw,58px)!important}
+          .tgt-hero-actions{grid-template-columns:1fr!important}
+          .tgt-hero-marker-login{grid-column:auto!important}
+          .tgt-app-lobby{padding:16px 8px 80px!important}
+          .tgt-lobby-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+          .tgt-lobby-grid button{min-height:118px!important;padding:13px 8px!important}
+        }
+        @media(max-width:390px){.tgt-lobby-grid{grid-template-columns:1fr!important}.tgt-lobby-grid button{min-height:96px!important}}
+      
+        /* Final premium bottom-navigation override */
+        .tgt-mit-tgt-universe{padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
+        .tgt-mit-tgt-universe .main-content{padding-bottom:42px!important;scroll-margin-bottom:120px!important}
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav,
+        .tgt-player-shell .tgt-mobile-bottom-nav{
+          position:fixed!important;left:50%!important;right:auto!important;bottom:max(10px,env(safe-area-inset-bottom))!important;z-index:9999!important;
+          width:min(620px,calc(100% - 24px))!important;height:68px!important;min-height:68px!important;
+          display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-template-rows:68px!important;align-items:center!important;
+          padding:6px 10px!important;margin:0!important;transform:translateX(-50%)!important;
+          border:1px solid rgba(244,217,141,.30)!important;border-radius:24px!important;
+          background:linear-gradient(180deg,rgba(8,55,40,.96),rgba(3,34,25,.98))!important;
+          box-shadow:0 18px 46px rgba(0,24,17,.34),inset 0 1px 0 rgba(255,255,255,.08)!important;
+          backdrop-filter:blur(20px) saturate(130%)!important;-webkit-backdrop-filter:blur(20px) saturate(130%)!important;
+          overflow:visible!important;box-sizing:border-box!important
+        }
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav button,
+        .tgt-player-shell .tgt-mobile-bottom-nav button{
+          position:relative!important;width:100%!important;height:52px!important;min-width:0!important;min-height:52px!important;
+          display:grid!important;place-items:center!important;margin:0!important;padding:0!important;border:0!important;border-radius:17px!important;
+          background:transparent!important;color:rgba(247,223,153,.66)!important;box-shadow:none!important;
+          transition:background .18s ease,color .18s ease,transform .18s ease!important
+        }
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav button:active,
+        .tgt-player-shell .tgt-mobile-bottom-nav button:active{transform:scale(.94)!important}
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav button.active,
+        .tgt-player-shell .tgt-mobile-bottom-nav button.active{color:#ffe7a1!important;background:rgba(244,217,141,.10)!important}
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav button.active:after,
+        .tgt-player-shell .tgt-mobile-bottom-nav button.active:after{content:""!important;position:absolute!important;left:50%!important;bottom:4px!important;width:4px!important;height:4px!important;transform:translateX(-50%)!important;border-radius:50%!important;background:#f4d98d!important;box-shadow:0 0 12px rgba(244,217,141,.75)!important}
+        .tgt-mit-tgt-universe .tgt-nav-glyph,.tgt-player-shell .tgt-nav-glyph{width:23px!important;height:23px!important;opacity:.96!important}
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav .tgt-bottom-play,
+        .tgt-player-shell .tgt-mobile-bottom-nav .tgt-bottom-play{width:64px!important;min-width:64px!important;max-width:64px!important;height:64px!important;min-height:64px!important;justify-self:center!important;align-self:center!important;margin:-22px auto 0!important;border-radius:50%!important;background:transparent!important}
+        .tgt-mit-tgt-universe .tgt-bottom-play-icon,.tgt-player-shell .tgt-bottom-play-icon{width:60px!important;height:60px!important;display:grid!important;place-items:center!important;transform:none!important;border:2px solid rgba(255,239,182,.92)!important;border-radius:50%!important;color:#073326!important;background:linear-gradient(145deg,#ffefb0 0%,#e1bd61 48%,#b77b28 100%)!important;box-shadow:0 12px 28px rgba(0,0,0,.34),0 0 0 5px rgba(5,42,31,.94),inset 0 1px 0 rgba(255,255,255,.55)!important;font-size:11px!important;font-weight:1000!important;letter-spacing:.10em!important}
+        .tgt-player-shell{padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
+        .tgt-player-shell .tgt-player-content{padding-bottom:44px!important;scroll-margin-bottom:120px!important}
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe,.tgt-player-shell{padding-bottom:calc(108px + env(safe-area-inset-bottom))!important}
+          .tgt-mit-tgt-universe .tgt-mobile-bottom-nav,.tgt-player-shell .tgt-mobile-bottom-nav{bottom:max(8px,env(safe-area-inset-bottom))!important;width:calc(100% - 20px)!important;border-radius:22px!important}
+        }
+.tgt-mit-tgt-universe .tgt-public-topbar:after{content:"MIT TGT";position:absolute;left:50%;transform:translateX(-50%);color:#f4d98d;font-size:10px;font-weight:900;letter-spacing:.15em}.tgt-mit-tgt-universe .tgt-public-topbar .tgt-public-login-choice{color:#f7df99!important;background:rgba(244,217,141,.09)!important}
+        /* Definitive Mit TGT bottom nav. Unique selectors override all legacy nav CSS. */
+        .tgt-fixed-bottom-nav{position:fixed!important;left:50%!important;right:auto!important;bottom:max(10px,env(safe-area-inset-bottom))!important;z-index:10000!important;width:min(620px,calc(100% - 20px))!important;height:72px!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-template-rows:72px!important;align-items:center!important;gap:0!important;margin:0!important;padding:7px 10px!important;transform:translateX(-50%)!important;box-sizing:border-box!important;overflow:visible!important;border:1px solid rgba(244,217,141,.34)!important;border-radius:25px!important;background:linear-gradient(180deg,rgba(8,61,43,.98),rgba(3,38,27,.99))!important;box-shadow:0 18px 48px rgba(0,25,18,.38),inset 0 1px 0 rgba(255,255,255,.09)!important;backdrop-filter:blur(20px)!important;-webkit-backdrop-filter:blur(20px)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item{position:relative!important;appearance:none!important;-webkit-appearance:none!important;width:100%!important;height:56px!important;min-width:0!important;min-height:56px!important;max-width:none!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;margin:0!important;padding:0!important;visibility:visible!important;opacity:1!important;overflow:visible!important;border:0!important;border-radius:17px!important;color:rgba(255,232,165,.68)!important;background:transparent!important;box-shadow:none!important;transform:none!important;cursor:pointer!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#ffe8a3!important;background:rgba(244,217,141,.11)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active:not(.tgt-fixed-nav-play):after{content:""!important;position:absolute!important;left:50%!important;bottom:3px!important;width:4px!important;height:4px!important;transform:translateX(-50%)!important;border-radius:50%!important;background:#f4d98d!important;box-shadow:0 0 10px rgba(244,217,141,.8)!important}
+        .tgt-fixed-nav-icon{width:23px!important;height:23px!important;display:block!important;visibility:visible!important;opacity:1!important;color:currentColor!important}
+        .tgt-fixed-nav-icon svg{width:23px!important;height:23px!important;display:block!important;overflow:visible!important;fill:none!important;stroke:currentColor!important;stroke-width:1.8!important;stroke-linecap:round!important;stroke-linejoin:round!important}
+        .tgt-fixed-nav-item small{display:block!important;width:auto!important;height:auto!important;margin:0!important;padding:0!important;overflow:visible!important;color:currentColor!important;font-size:8px!important;font-weight:900!important;line-height:1!important;letter-spacing:.05em!important;text-transform:uppercase!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-play{width:64px!important;min-width:64px!important;max-width:64px!important;height:64px!important;min-height:64px!important;justify-self:center!important;align-self:center!important;margin:-25px auto 0!important;border-radius:50%!important;background:transparent!important}
+        .tgt-fixed-play-disc{width:60px!important;height:60px!important;display:grid!important;place-items:center!important;visibility:visible!important;opacity:1!important;border:2px solid #fff0ba!important;border-radius:50%!important;color:#073326!important;background:linear-gradient(145deg,#fff0b2 0%,#dfb958 50%,#b87b29 100%)!important;box-shadow:0 12px 28px rgba(0,0,0,.36),0 0 0 6px rgba(4,42,31,.98),inset 0 1px 0 rgba(255,255,255,.58)!important;font-size:11px!important;font-weight:1000!important;line-height:1!important;letter-spacing:.10em!important}
+        .tgt-fixed-nav-item:active{transform:scale(.94)!important}.tgt-fixed-nav-item:disabled{opacity:.46!important;cursor:not-allowed!important}
+        @media(max-width:700px){.tgt-fixed-bottom-nav{bottom:max(8px,env(safe-area-inset-bottom))!important;width:calc(100% - 18px)!important;height:70px!important;grid-template-rows:70px!important;padding:6px 8px!important;border-radius:23px!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item{height:54px!important;min-height:54px!important}.tgt-fixed-nav-item small{font-size:7px!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-play{margin:-23px auto 0!important}}
+
+        /* TGT golf theme: green, black and red. Gold is reserved for Hall of Fame. */
+        .tgt-fixed-bottom-nav{border-color:rgba(255,255,255,.12)!important;background:linear-gradient(180deg,rgba(15,20,18,.98),rgba(3,9,7,.99))!important;box-shadow:0 16px 42px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.07)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item{color:rgba(234,241,237,.62)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#fff!important;background:rgba(27,111,70,.30)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active:not(.tgt-fixed-nav-play):after{background:#d8343a!important;box-shadow:0 0 12px rgba(216,52,58,.8)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item:nth-child(4){color:#ef6b70!important}
+        .tgt-fixed-play-disc{border-color:#f1f5f2!important;color:#fff!important;background:linear-gradient(145deg,#d9454b,#9f1f25)!important;box-shadow:0 12px 28px rgba(0,0,0,.38),0 0 0 6px rgba(5,24,17,.98),inset 0 1px 0 rgba(255,255,255,.25)!important}
+        .tgt-player-appbar{border-bottom-color:rgba(255,255,255,.10)!important;color:#fff!important;background:rgba(5,35,25,.98)!important}
+        .tgt-player-brandmark{border-color:rgba(255,255,255,.30)!important;color:#fff!important;background:#07140f!important}
+        .tgt-player-brand strong{color:#fff!important}.tgt-player-brand small{color:rgba(226,237,230,.60)!important}
+        .tgt-player-menu-button{border-color:rgba(255,255,255,.20)!important;color:#fff!important;background:#07140f!important}
+        .tgt-top-menu-svg{width:23px!important;height:23px!important;display:block!important;fill:none!important;stroke:currentColor!important;stroke-width:2!important;stroke-linecap:round!important}
+        .tgt-player-head{background:linear-gradient(145deg,#063d2a,#075438)!important;color:#fff!important}
+        .tgt-player-head .eyebrow,.tgt-player-head h1,.tgt-player-head span{color:#fff!important}
+        .tgt-player-head .tgt-player-actions button{border-color:rgba(255,255,255,.30)!important;color:#fff!important;background:#07140f!important}
+        .tgt-player-content{background:#f3f5f3!important}
+        .tgt-player-primary{border-color:#0d6843!important;color:#fff!important;background:linear-gradient(135deg,#0b6842,#06442e)!important}
+        .tgt-player-kpi,.tgt-player-panel{border-color:#dbe2dd!important;background:#fff!important;box-shadow:0 8px 24px rgba(7,31,22,.07)!important}
+        .tgt-player-kpi strong,.tgt-player-panel h2,.tgt-player-panel h3{color:#0a3d2a!important}
+        .tgt-player-avatar{color:#fff!important;background:linear-gradient(145deg,#0f754b,#073d2a)!important}
+        .tgt-drawer{border-color:rgba(255,255,255,.12)!important;background:#07140f!important;color:#fff!important}
+        .tgt-drawer-head{border-bottom-color:rgba(255,255,255,.10)!important}.tgt-drawer-head h2,.tgt-drawer-head .eyebrow{color:#fff!important}
+        .tgt-drawer-close{border-color:rgba(255,255,255,.18)!important;color:#fff!important;background:#111a16!important}
+        .tgt-drawer-nav button{border-color:rgba(255,255,255,.09)!important;color:#eef4f0!important;background:#0b2419!important}
+        .tgt-drawer-nav button:hover{background:#103522!important}
+        .tgt-hall-fullscreen,.tgt-hall-panel,.tgt-hall-card{--hall-gold:#d6b25e}
+
+        /* Fresh golf theme: inviting fairway greens with restrained coral-red energy. Hall of Fame keeps its own gold styling. */
+        :root{--tgt-forest:#073f2c;--tgt-deep:#052f22;--tgt-fairway:#168454;--tgt-fairway-light:#39a86f;--tgt-mint:#eaf5ee;--tgt-paper:#f7faf7;--tgt-white:#ffffff;--tgt-red:#df454d;--tgt-red-dark:#b92f37;--tgt-ink:#113c2d;--tgt-muted:#688077}
+        .tgt-public-shell,.tgt-player-shell{background:linear-gradient(180deg,#dff0e5 0%,#f7faf7 30%,#eef5f0 100%)!important;color:var(--tgt-ink)!important}
+        .tgt-public-topbar,.tgt-player-appbar{border-bottom:1px solid rgba(255,255,255,.18)!important;background:linear-gradient(135deg,#075238,#0a6845)!important;color:#fff!important;box-shadow:0 8px 24px rgba(7,63,44,.14)!important}
+        .tgt-wordmark-mark,.tgt-player-brandmark{border-color:rgba(255,255,255,.48)!important;color:#fff!important;background:rgba(255,255,255,.10)!important}
+        .tgt-wordmark strong,.tgt-player-brand strong{color:#fff!important}.tgt-wordmark small,.tgt-player-brand small{color:rgba(255,255,255,.72)!important}
+        .tgt-menu-button,.tgt-player-menu-button{border-color:rgba(255,255,255,.34)!important;color:#fff!important;background:rgba(255,255,255,.12)!important;box-shadow:none!important}
+        .tgt-premium-hero,.tgt-player-head{background:linear-gradient(145deg,#086844 0%,#0e8654 62%,#167348 100%)!important;color:#fff!important}
+        .tgt-premium-hero:before,.tgt-player-head:before{background:radial-gradient(circle at 82% 20%,rgba(255,255,255,.15),transparent 30%)!important}
+        .tgt-premium-hero h1,.tgt-player-head h1,.tgt-premium-hero .eyebrow,.tgt-player-head .eyebrow,.tgt-player-head span{color:#fff!important}
+        .tgt-player-content,.main-content,.tgt-app-lobby{background:transparent!important}
+        .leaderboard-card,.tgt-player-kpi,.tgt-player-panel,.tgt-lobby-grid button,.tgt-round-card,.tgt-live-card{border-color:#d7e6dc!important;background:rgba(255,255,255,.94)!important;box-shadow:0 10px 28px rgba(7,63,44,.08)!important}
+        .leaderboard-card h2,.leaderboard-card h3,.tgt-player-kpi strong,.tgt-player-panel h2,.tgt-player-panel h3,.tgt-lobby-grid strong{color:var(--tgt-ink)!important}
+        .eyebrow:not(.tgt-hall-fullscreen .eyebrow):not(.tgt-hall-panel .eyebrow){color:var(--tgt-fairway)!important}
+        .tgt-player-avatar{color:#fff!important;background:linear-gradient(145deg,#27a467,#08794c)!important;box-shadow:0 8px 18px rgba(22,132,84,.22)!important}
+        .tgt-player-primary,.login-submit-button,.tgt-primary-action{border-color:#0d7b4e!important;color:#fff!important;background:linear-gradient(135deg,#1b985f,#0c7048)!important;box-shadow:0 10px 22px rgba(22,132,84,.20)!important}
+        .tgt-player-primary:hover,.login-submit-button:hover,.tgt-primary-action:hover{background:linear-gradient(135deg,#20a768,#0e7b4f)!important}
+        .tgt-secondary-action,.login-cancel-button{border-color:#bcd6c5!important;color:#0b6543!important;background:#fff!important}
+        .tgt-tabs button.active,.tgt-tab.active,.tgt-filter-button.active{border-color:#168454!important;color:#fff!important;background:#168454!important}
+        .live-badge,.tgt-live-badge{border-color:rgba(223,69,77,.28)!important;color:#fff!important;background:var(--tgt-red)!important}
+        .tgt-fixed-bottom-nav{border-color:rgba(255,255,255,.22)!important;background:linear-gradient(180deg,rgba(8,91,59,.99),rgba(5,65,45,.99))!important;box-shadow:0 16px 42px rgba(7,63,44,.30),inset 0 1px 0 rgba(255,255,255,.14)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item{color:rgba(238,250,242,.72)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#fff!important;background:rgba(255,255,255,.14)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active:not(.tgt-fixed-nav-play):after{background:var(--tgt-red)!important;box-shadow:0 0 12px rgba(223,69,77,.75)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item:nth-child(4){color:#ffd9db!important}
+        .tgt-fixed-play-disc{border-color:#fff!important;color:#fff!important;background:linear-gradient(145deg,#ef5a61,#c9323a)!important;box-shadow:0 12px 27px rgba(95,22,27,.28),0 0 0 6px rgba(7,86,56,.98),inset 0 1px 0 rgba(255,255,255,.30)!important}
+        .tgt-drawer{border-color:rgba(255,255,255,.18)!important;background:linear-gradient(160deg,#07543a,#0b7049)!important;color:#fff!important}
+        .tgt-drawer-head{border-bottom-color:rgba(255,255,255,.15)!important}.tgt-drawer-head h2,.tgt-drawer-head .eyebrow{color:#fff!important}
+        .tgt-drawer-close{border-color:rgba(255,255,255,.28)!important;color:#fff!important;background:rgba(255,255,255,.12)!important}
+        .tgt-drawer-nav button{border-color:rgba(255,255,255,.12)!important;color:#fff!important;background:rgba(255,255,255,.09)!important}
+        .tgt-drawer-nav button:hover{background:rgba(255,255,255,.16)!important}
+        .status-box{border-color:#d3e6da!important;color:#45685a!important;background:#eff7f2!important}
+        .tgt-player-stat{background:#eff7f2!important}.tgt-player-stat strong{color:#08764a!important}
+        .tgt-hall-fullscreen,.tgt-hall-panel,.tgt-hall-card{--hall-gold:#d6b25e}
+
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe .tgt-public-topbar{min-height:64px!important;padding:8px 10px!important}
+          .tgt-mit-tgt-universe .tgt-wordmark>span:last-child{display:none!important}
+          .tgt-mit-tgt-universe .tgt-wordmark-mark{width:42px!important;height:42px!important;min-width:42px!important}
+          .tgt-mit-tgt-universe .tgt-public-topbar:after{font-size:9px!important;letter-spacing:.12em!important}
+          .tgt-mit-tgt-universe .tgt-public-login-choice{min-height:38px!important;padding:0 10px!important;font-size:8px!important}
+          .tgt-mit-tgt-universe .tgt-menu-button{width:40px!important;height:40px!important;min-width:40px!important}
+          .tgt-mit-tgt-universe .tgt-tabs{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;padding:10px!important}
+          .tgt-mit-tgt-universe .tgt-tabs button{min-width:0!important;width:100%!important;font-size:15px!important;padding:12px 8px!important;white-space:normal!important;line-height:1.1!important}
+        }
+
+/* Final anti-gold pass outside Hall of Fame */
+.tgt-public-topbar,.tgt-player-appbar,.tgt-mit-tgt-universe{--tgt-gold-replacement:#ffffff}
+.tgt-public-topbar *, .tgt-player-appbar *, .tgt-mit-tgt-universe .eyebrow, .tgt-mit-tgt-universe h1, .tgt-mit-tgt-universe h2, .tgt-mit-tgt-universe h3 {color:inherit}
+.tgt-mit-tgt-universe .tgt-wordmark, .tgt-mit-tgt-universe .tgt-public-login-choice, .tgt-mit-tgt-universe .tgt-score-label, .tgt-mit-tgt-universe .position-1, .tgt-mit-tgt-universe .position-2, .tgt-mit-tgt-universe .position-3 {color:#113c2d!important}
+.tgt-mit-tgt-universe .position-badge{background:#eaf5ee!important;color:#0b6543!important}
+.tgt-mit-tgt-universe .position-1,.tgt-mit-tgt-universe .position-2,.tgt-mit-tgt-universe .position-3{background:#eaf5ee!important}
+
+        /* FINAL AUTHENTICATED UI: no burger, no gold, fixed nav, full scroll room */
+        .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{padding-bottom:calc(132px + env(safe-area-inset-bottom))!important}
+        .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:64px!important;scroll-margin-bottom:140px!important}
+        .tgt-mit-tgt-universe .tgt-public-login-choice,.tgt-mit-tgt-universe .tgt-menu-button,.tgt-player-menu-button{display:none!important}
+        .tgt-mit-tgt-universe .tgt-public-topbar{justify-content:flex-start!important;background:linear-gradient(135deg,#075238,#0a6845)!important}
+        .tgt-mit-tgt-universe .tgt-public-topbar:after{content:"MIT TGT"!important;left:auto!important;right:16px!important;transform:none!important;color:#fff!important;font:900 10px/1 system-ui,sans-serif!important;letter-spacing:.16em!important}
+        .tgt-mit-tgt-universe .tgt-wordmark,.tgt-mit-tgt-universe .tgt-wordmark *,.tgt-player-appbar,.tgt-player-appbar *{color:#fff!important}
+        .tgt-mit-tgt-universe .tgt-wordmark-mark,.tgt-player-brandmark{border-color:rgba(255,255,255,.46)!important;color:#fff!important;background:rgba(255,255,255,.10)!important}
+        .tgt-mit-tgt-universe .eyebrow:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-player-shell .eyebrow{color:#168454!important}
+        .tgt-mit-tgt-universe h1:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-mit-tgt-universe h2:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-mit-tgt-universe h3:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-player-shell h1,.tgt-player-shell h2,.tgt-player-shell h3{color:#113c2d!important}
+        .tgt-player-head h1,.tgt-player-head h2,.tgt-player-head h3,.tgt-player-head p,.tgt-player-head span,.tgt-player-head .eyebrow,.tgt-menu-page-head h1,.tgt-menu-page-head p,.tgt-menu-page-head span{color:#fff!important}
+        .tgt-mit-tgt-universe th,.tgt-mit-tgt-universe td,.tgt-mit-tgt-universe .player-name,.tgt-mit-tgt-universe .score,.tgt-mit-tgt-universe .score-value,.tgt-player-shell .player-name{color:#113c2d!important}
+        .tgt-mit-tgt-universe .waiting,.tgt-mit-tgt-universe .pending,.tgt-mit-tgt-universe [class*="await"]{color:#688077!important}
+        .tgt-mit-tgt-universe .tgt-tabs button,.tgt-mit-tgt-universe .tgt-tab,.tgt-mit-tgt-universe .tgt-filter-button{color:#0b6543!important;background:#fff!important;border-color:#c8ddd0!important}
+        .tgt-mit-tgt-universe .tgt-tabs button.active,.tgt-mit-tgt-universe .tgt-tab.active,.tgt-mit-tgt-universe .tgt-filter-button.active{color:#fff!important;background:#168454!important;border-color:#168454!important}
+        .tgt-mit-tgt-universe .live-badge,.tgt-mit-tgt-universe .tgt-live-badge{color:#fff!important;background:#df454d!important;border-color:#df454d!important}
+        /* Classic podium palette remains visible */
+        .tgt-mit-tgt-universe .position-badge.position-1,.tgt-mit-tgt-universe .position-1{color:#513700!important;background:#f1c84b!important;border-color:#e0b52f!important}
+        .tgt-mit-tgt-universe .position-badge.position-2,.tgt-mit-tgt-universe .position-2{color:#33424b!important;background:#d9e0e4!important;border-color:#c4ced3!important}
+        .tgt-mit-tgt-universe .position-badge.position-3,.tgt-mit-tgt-universe .position-3{color:#5c3214!important;background:#dca56f!important;border-color:#c98e54!important}
+        .tgt-fixed-bottom-nav{bottom:max(10px,env(safe-area-inset-bottom))!important}
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{padding-bottom:calc(128px + env(safe-area-inset-bottom))!important}
+          .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:68px!important}
+          .tgt-mit-tgt-universe .tgt-public-topbar:after{right:12px!important}
+          .tgt-fixed-bottom-nav{bottom:max(8px,env(safe-area-inset-bottom))!important}
+        }
+
+        /* Mobile header breathing room while preserving EST. 2023 */
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe .tgt-public-topbar{
+            min-height:88px!important;
+            height:auto!important;
+            padding:12px 14px!important;
+            align-items:center!important;
+            overflow:visible!important;
+            box-sizing:border-box!important;
+          }
+          .tgt-mit-tgt-universe .tgt-wordmark{
+            display:grid!important;
+            grid-template-columns:48px minmax(0,1fr)!important;
+            align-items:center!important;
+            gap:12px!important;
+            width:calc(100% - 72px)!important;
+            min-width:0!important;
+          }
+          .tgt-mit-tgt-universe .tgt-wordmark-mark{
+            width:46px!important;
+            height:46px!important;
+            min-width:46px!important;
+          }
+          .tgt-mit-tgt-universe .tgt-wordmark>span:last-child{
+            display:block!important;
+            min-width:0!important;
+            color:#fff!important;
+            font-size:clamp(13px,4vw,18px)!important;
+            line-height:1.12!important;
+            letter-spacing:.10em!important;
+            white-space:normal!important;
+            overflow:visible!important;
+          }
+          .tgt-mit-tgt-universe .tgt-wordmark small{
+            display:block!important;
+            margin-top:6px!important;
+            color:rgba(255,255,255,.72)!important;
+            font-size:9px!important;
+            line-height:1!important;
+            letter-spacing:.16em!important;
+          }
+          .tgt-mit-tgt-universe .tgt-public-topbar:after{
+            right:14px!important;
+            top:50%!important;
+            transform:translateY(-50%)!important;
+            color:#fff!important;
+          }
+          .tgt-mit-tgt-universe .tgt-tabs{
+            margin-top:12px!important;
+          }
+        }
+        @media(max-width:430px){
+          .tgt-mit-tgt-universe .tgt-public-topbar{min-height:92px!important;padding:12px 10px!important}
+          .tgt-mit-tgt-universe .tgt-wordmark{grid-template-columns:44px minmax(0,1fr)!important;gap:9px!important;width:calc(100% - 64px)!important}
+          .tgt-mit-tgt-universe .tgt-wordmark-mark{width:42px!important;height:42px!important;min-width:42px!important}
+          .tgt-mit-tgt-universe .tgt-wordmark>span:last-child{font-size:13px!important;letter-spacing:.07em!important}
+          .tgt-mit-tgt-universe .tgt-wordmark small{font-size:8px!important;margin-top:5px!important}
+          .tgt-mit-tgt-universe .tgt-public-topbar:after{right:10px!important;font-size:8px!important;letter-spacing:.10em!important}
+        }
+
+        /* Final release logo and compact-copy pass */
+        .tgt-wordmark-mark,.tgt-player-brandmark{border-color:rgba(255,255,255,.58)!important;color:#fff!important;background:#0b7049!important;text-shadow:none!important}
+        .tgt-wordmark,.tgt-wordmark>span,.tgt-wordmark small,.tgt-player-brand,.tgt-player-brand strong,.tgt-player-brand small{color:#fff!important;text-shadow:none!important}
+        .tgt-public-topbar .tgt-wordmark>span:last-child{color:#fff!important}
+        .tgt-public-topbar .tgt-wordmark small{color:rgba(255,255,255,.72)!important}
+        .tgt-mit-tgt-universe .leaderboard-card>.card-header .description{display:none!important}
+`}</style>
 
       <header className="tgt-public-topbar">
         <div className="tgt-wordmark">
@@ -2201,13 +2526,13 @@ function Leaderboard({ onOpenLogin }) {
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button
+          {!isAuthenticated && <button
             type="button"
-            className="tgt-mobile-marker-login"
-            onClick={onOpenLogin}
+            className="tgt-mobile-marker-login tgt-public-login-choice"
+            onClick={()=>onOpenPlayerLogin?.()}
           >
-            MARKØR-LOGIN
-          </button>
+            MIT TGT
+          </button>}
           <button
             type="button"
             className="tgt-desktop-hall-button"
@@ -2226,7 +2551,7 @@ function Leaderboard({ onOpenLogin }) {
           >
             HALL OF FAME
           </button>
-        <button
+        {!isAuthenticated && <button
           type="button"
           className="tgt-menu-button"
           aria-label="Åbn hovedmenu"
@@ -2235,11 +2560,11 @@ function Leaderboard({ onOpenLogin }) {
           onClick={() => setMenuOpen(true)}
         >
           ☰
-        </button>
+        </button>}
         </div>
       </header>
 
-      {menuOpen && (
+      {!isAuthenticated && menuOpen && (
         <>
           <div className="tgt-menu-backdrop" onClick={() => setMenuOpen(false)} />
           <aside id="tgt-main-menu" className="tgt-drawer" aria-label="Hovedmenu" aria-modal="true" role="dialog">
@@ -2258,25 +2583,29 @@ function Leaderboard({ onOpenLogin }) {
               </button>
             </div>
             <nav className="tgt-drawer-nav">
-              <button type="button" onClick={openIndividualFullscreen}>Leaderboard</button>
-              <button type="button" onClick={() => openPanelFullscreen("rounds")}>Runder</button>
-              <button type="button" onClick={() => openPanelFullscreen("profiles")}>Spillerprofiler</button>
-              <button type="button" onClick={() => openLiveFullscreen("individual")}>Live leaderboard</button>
-              <button type="button" onClick={openTeamFullscreen}>Holdturneringen</button>
-              <button type="button" onClick={() => openPanelFullscreen("hall")}>Hall of Fame</button>
-              <div style={{ padding: "14px 16px 6px", color: "#d7b469", fontWeight: 900, letterSpacing: ".08em" }}>VÆLG SÆSON</div>
-              {[2027, 2026].map((season) => (
-                <button key={season} type="button" onClick={() => switchSeason(season)} style={{ color: selectedSeason === season ? "#d7b469" : undefined, fontWeight: selectedSeason === season ? 900 : undefined }}>
-                  {selectedSeason === season ? "●" : "○"} {season}
-                </button>
-              ))}
-              <button type="button" className="tgt-menu-marker-login" onClick={() => { setMenuOpen(false); onOpenLogin(); }}>Markør- og admin-login</button>
+              {isAuthenticated ? <>
+                <button type="button" onClick={()=>{setMenuOpen(false);onPortalNavigate?.("profile")}}>Min profil</button>
+                <button type="button" onClick={()=>{setMenuOpen(false);onPortalNavigate?.("leaderboard")}}>Leaderboard og live-leaderboard</button>
+                <button type="button" onClick={()=>{setMenuOpen(false);onPortalNavigate?.("live-leaderboard")}}>Livescore og live-leaderboard</button>
+                <button type="button" onClick={()=>{setMenuOpen(false);onPortalNavigate?.("play")}}>Scoreindtastning</button>
+                <button type="button" onClick={()=>openPanelFullscreen("rounds")}>Runder</button>
+                <button type="button" onClick={()=>openPanelFullscreen("profiles")}>Spillerprofiler</button>
+                <button type="button" onClick={()=>openPanelFullscreen("hall")}>Hall of Fame</button>
+              </> : <>
+                <button type="button" onClick={openIndividualFullscreen}>Leaderboard</button>
+                <button type="button" onClick={()=>openPanelFullscreen("rounds")}>Runder</button>
+                <button type="button" onClick={()=>openPanelFullscreen("profiles")}>Spillerprofiler</button>
+                <button type="button" onClick={()=>openLiveFullscreen("individual")}>Live leaderboard</button>
+                <button type="button" onClick={openTeamFullscreen}>Holdturneringen</button>
+                <button type="button" onClick={()=>openPanelFullscreen("hall")}>Hall of Fame</button>
+                <button type="button" className="tgt-menu-marker-login" onClick={()=>{setMenuOpen(false);onOpenPlayerLogin?.()}}>Mit TGT-login</button>
+              </>}
             </nav>
           </aside>
         </>
       )}
 
-      <section className="tgt-premium-hero">
+      {!isAuthenticated && <section className="tgt-premium-hero">
         <div className="tgt-hero-inner">
           <span className="tgt-kicker">SÆSON {selectedSeason} · THE GOLDEN TEE TOUR</span>
           <h1>
@@ -2306,15 +2635,15 @@ function Leaderboard({ onOpenLogin }) {
             <button
               type="button"
               className="tgt-secondary-action tgt-hero-marker-login"
-              onClick={onOpenLogin}
+              onClick={onOpenPlayerLogin}
             >
-              Markør-login
+              Mit TGT-login
             </button>
           </div>
         </div>
-      </section>
+      </section>}
 
-      {!individualFullscreen && !teamFullscreen && !liveFullscreen && !panelFullscreen && (
+      {!isAuthenticated && !individualFullscreen && !teamFullscreen && !liveFullscreen && !panelFullscreen && (
         <section className="tgt-app-lobby" aria-label="TGT hovedmenu">
           <div className="tgt-lobby-heading">
             <p className="eyebrow">TGT Live</p>
@@ -2495,7 +2824,7 @@ function Leaderboard({ onOpenLogin }) {
             <div>
               <p className="eyebrow">{currentHeading.eyebrow}</p>
               <h2>{currentHeading.title}</h2>
-              <p className="description">{currentHeading.description}</p>
+
             </div>
             <div className="live-badge">
               <span className="live-dot" /> {liveLeaderboardMode === "both"
@@ -2676,7 +3005,7 @@ function Leaderboard({ onOpenLogin }) {
                                     <div style={{ marginTop: 14, padding: 20, borderRadius: 18, background: "linear-gradient(145deg, #052a1f, #0a4633)", color: "#f0cf82", border: "1px solid rgba(240,207,130,.5)", boxShadow: "0 12px 30px rgba(1,18,13,.22)" }}>
                                       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
                                         <div style={{ width: 78, height: 78, minWidth: 78, display: "grid", placeItems: "center", borderRadius: "50%", border: "2px solid #e1bd66", background: "radial-gradient(circle at 30% 25%, #f5dc94, #b8802d)", color: "#133528", fontFamily: "Georgia, serif", fontSize: 27, fontWeight: 900, boxShadow: "0 8px 28px rgba(215,180,105,.3)" }}>{getInitials(player.player_name)}</div>
-                                        <div><p className="eyebrow" style={{ color: "#d8bc74", marginBottom: 5 }}>The Golden Tee Tour</p><h3 style={{ margin: 0, color: "#f0d582", fontSize: 25 }}>{player.player_name}</h3><span style={{ color: "rgba(255,255,255,.7)" }}>TGT spillerprofil · 2026</span></div>
+                                        <div><p className="eyebrow" style={{ color: "#d8bc74", marginBottom: 5 }}>The Golden Tee Tour</p><h3 style={{ margin: 0, color: "#f0d582", fontSize: 25 }}>{player.player_name}</h3><span style={{ color: "rgba(255,255,255,.7)" }}>TGT spillerprofil · {ACTIVE_SEASON}</span></div>
                                       </div>
                                       <div className="flight-information tgt-profile-kpis">
                                         <div><span style={{ color: "#e8cb7b" }}>Handicap</span><strong style={{ color: "#f0cf82" }}>{playerDirectory[player.player_id]?.handicap_index ?? livePlayer?.handicap ?? "–"}</strong></div>
@@ -2747,7 +3076,13 @@ function Leaderboard({ onOpenLogin }) {
             </div>
           )}
 
-          {!loading && !errorMessage && tab === "live" && (!liveFullscreen || liveView === "individual") && (
+          {!loading && !errorMessage && tab === "live" && !liveData?.round && (
+            <section className="leaderboard-card" style={{textAlign:"center",padding:"42px 20px"}}>
+              <p className="eyebrow">LIVE</p><h2 style={{margin:"8px 0"}}>Ingen aktiv runde</h2>
+              <p className="description">Livescore vises automatisk, når en runde er sat til live.</p>
+            </section>
+          )}
+          {!loading && !errorMessage && tab === "live" && Boolean(liveData?.round) && (!liveFullscreen || liveView === "individual") && (
             <>
               {["individual", "both"].includes(liveLeaderboardMode) && (
                 <PublicLiveTopFive type="individual" />
@@ -2864,7 +3199,7 @@ function Leaderboard({ onOpenLogin }) {
             </>
           )}
 
-          {!loading && !errorMessage && tab === "live" && liveFullscreen && liveView === "team" && (
+          {!loading && !errorMessage && tab === "live" && Boolean(liveData?.round) && liveFullscreen && liveView === "team" && (
             <>
               {["team", "both"].includes(liveLeaderboardMode) && (
                 <PublicLiveTopFive type="team" />
@@ -3104,7 +3439,7 @@ function Leaderboard({ onOpenLogin }) {
                         className="eyebrow"
                         style={{ color: "#dafaaf" }}
                       >
-                        TGT-mester 2026
+                        TGT-mester {ACTIVE_SEASON}
                       </p>
                       <h2 style={{ margin: "5px 0" }}>
                         {finalStandingsData.champion.playerName}
@@ -3222,141 +3557,440 @@ function Leaderboard({ onOpenLogin }) {
           </div>
         </section>
       </main>
-      <nav className="tgt-mobile-bottom-nav" aria-label="Mobilnavigation">
-        <button type="button" className={tab === "season" ? "active" : ""} onClick={openIndividualFullscreen}>
-          <span aria-hidden="true">◆</span><small>Leaderboard</small>
-        </button>
-        <button type="button" className={tab === "live" ? "active" : ""} onClick={() => openLiveFullscreen("individual")}>
-          <span aria-hidden="true">●</span><small>Live</small>
-        </button>
-        <button type="button" className={tab === "rounds" ? "active" : ""} onClick={() => openPanelFullscreen("rounds")}>
-          <span aria-hidden="true">▦</span><small>Runder</small>
-        </button>
-        <button type="button" onClick={() => setMenuOpen(true)} aria-label="Åbn mere-menu">
-          <span aria-hidden="true">☰</span><small>Mere</small>
-        </button>
-      </nav>
+      
+      {onPortalNavigate && <MitTgtBottomNav active={initialPortalView === "live-leaderboard" ? "live" : "leaderboard"} onProfile={()=>onPortalNavigate("profile")} onLeaderboard={()=>onPortalNavigate("leaderboard")} onPlay={()=>onPortalNavigate("play")} onLive={()=>onPortalNavigate("live-leaderboard")} onMenu={()=>onPortalNavigate("menu")} />}
     </div>
   );
 }
 
-function MarkerLogin({
-  onCancel,
-  onLoginSuccess,
-}) {
+function PlayerLogin({ onCancel, onLoginSuccess }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState("");
-
   async function handleLogin(event) {
-    event.preventDefault();
-
-    setLoggingIn(true);
-    setLoginError("");
-
-    const normalizedUsername = username.trim().toLowerCase().replace(/\s+/g, "");
-    const loginEmail = normalizedUsername.includes("@")
-      ? normalizedUsername
-      : `${normalizedUsername}@tgt.dk`;
-
-    const { data, error } =
-      await supabase.auth.signInWithPassword({
-        email: loginEmail,
-        password,
-      });
-
-    if (error) {
-      console.error("Loginfejl:", error);
-
-      setLoginError(
-        "Login mislykkedes. Kontrollér brugernavn og kodeord."
-      );
-
-      setLoggingIn(false);
-      return;
-    }
-
-    setLoggingIn(false);
-    onLoginSuccess(data.session);
+    event.preventDefault(); setLoggingIn(true); setLoginError("");
+    const normalized = username.trim().toLowerCase().replace(/\s+/g, "");
+    const email = normalized.includes("@") ? normalized : `${normalized}@tgt.dk`;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) { setLoginError("Login mislykkedes. Kontrollér brugernavn/e-mail og kodeord."); setLoggingIn(false); return; }
+    setLoggingIn(false); onLoginSuccess(data.session);
   }
-
-  return (
-    <main className="login-page">
-      <section className="login-card">
-        <div className="login-icon">⛳</div>
-
-        <p className="eyebrow">TGT 2026</p>
-
-        <h1>Markør- og admin-login</h1>
-
-        <p className="description">
-          Log ind med boldens login eller din administratorbruger.
-        </p>
-
-        <form onSubmit={handleLogin}>
-          <label className="form-label">
-            Brugernavn
-          </label>
-
-          <input
-            type="text"
-            value={username}
-            onChange={(event) =>
-              setUsername(event.target.value)
-            }
-            placeholder="fx admin eller bold1"
-            autoComplete="username"
-            required
-            className="form-input"
-          />
-
-          <label className="form-label">
-            Kodeord
-          </label>
-
-          <input
-            type="password"
-            value={password}
-            onChange={(event) =>
-              setPassword(event.target.value)
-            }
-            placeholder="Indtast kodeord"
-            autoComplete="current-password"
-            required
-            className="form-input"
-          />
-
-          {loginError && (
-            <div className="error-box">
-              {loginError}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loggingIn}
-            className="login-submit-button"
-          >
-            {loggingIn
-              ? "Logger ind..."
-              : "Log ind"}
-          </button>
-
-          <button
-            type="button"
-            onClick={onCancel}
-            className="login-cancel-button"
-          >
-            Tilbage til leaderboard
-          </button>
-        </form>
-      </section>
-    </main>
-  );
+  return <main className="login-page tgt-fresh-login"><style>{`
+    .tgt-fresh-login{min-height:100dvh;background:linear-gradient(150deg,#064a34,#11905a 58%,#dff0e5)!important}
+    .tgt-fresh-login .login-card{border:1px solid rgba(255,255,255,.38)!important;border-radius:26px!important;background:rgba(255,255,255,.96)!important;box-shadow:0 24px 60px rgba(6,63,43,.24)!important}
+    .tgt-fresh-login .login-icon{background:linear-gradient(145deg,#25a96a,#08784c)!important;color:#fff!important}
+    .tgt-fresh-login .eyebrow{color:#168454!important}.tgt-fresh-login h1{color:#073f2c!important}
+    .tgt-fresh-login .login-submit-button{background:linear-gradient(135deg,#1b985f,#0c7048)!important;color:#fff!important}
+    .tgt-fresh-login .login-cancel-button{border-color:#c5ddcd!important;color:#0b6543!important;background:#fff!important}
+    .tgt-fresh-login .form-input:focus{border-color:#168454!important;box-shadow:0 0 0 3px rgba(22,132,84,.14)!important}
+  `}</style><section className="login-card"><div className="login-icon">⛳</div><p className="eyebrow">MIT TGT</p><h1>Mit TGT-login</h1><p className="description">Log ind på din personlige TGT-side.</p><form onSubmit={handleLogin}><label className="form-label">Brugernavn eller e-mail</label><input type="text" value={username} onChange={(event)=>setUsername(event.target.value)} placeholder="Brugernavn eller e-mail" autoComplete="username" required className="form-input"/><label className="form-label">Kodeord</label><input type="password" value={password} onChange={(event)=>setPassword(event.target.value)} placeholder="Indtast kodeord" autoComplete="current-password" required className="form-input"/>{loginError&&<div className="error-box">{loginError}</div>}<button type="submit" disabled={loggingIn} className="login-submit-button">{loggingIn?"Logger ind...":"Log ind"}</button><button type="button" onClick={onCancel} className="login-cancel-button">Tilbage til den offentlige side</button></form></section></main>;
+}
+function MitTgtMenuPage({ onNavigate, onLogout }) {
+  const menuItems = [
+    { title: "Min profil", subtitle: "Profil, handicap og statistik", view: "profile", icon: "person" },
+    { title: "Leaderboard", subtitle: "Individuel sæsonstilling", view: "leaderboard", icon: "chart" },
+    { title: "Holdturneringen", subtitle: "Holdstilling og resultater", view: "team", icon: "team" },
+    { title: "Livescore", subtitle: "Vises kun ved en aktiv runde", view: "live-leaderboard", icon: "live" },
+    { title: "Runder", subtitle: "Program, baner og tidligere runder", view: "rounds", icon: "calendar" },
+    { title: "Spillerprofiler", subtitle: "Spillere, klubber og statistik", view: "profiles", icon: "players" },
+    { title: "Tættest på pinden", subtitle: "Par 3-konkurrencen", view: "closest", icon: "target" },
+    { title: "Hall of Fame", subtitle: "Tidligere mestre og holdvindere", view: "hall", icon: "trophy" },
+    { title: "Scoreindtastning", subtitle: "Åbn din bold og indtast scorer", view: "play", icon: "flag" },
+  ];
+  const icon = (name) => {
+    const icons = {
+      person: <><circle cx="12" cy="8" r="3.2"/><path d="M5.5 20c.5-4 2.7-6 6.5-6s6 2 6.5 6"/></>,
+      chart: <><path d="M5 19V11M12 19V5M19 19v-8"/></>,
+      team: <><circle cx="8" cy="9" r="2.5"/><circle cx="16" cy="9" r="2.5"/><path d="M3.5 19c.4-3.2 1.9-4.8 4.5-4.8s4.1 1.6 4.5 4.8M11.5 19c.4-3.2 1.9-4.8 4.5-4.8s4.1 1.6 4.5 4.8"/></>,
+      live: <><path d="m12 3 8 9-8 9-8-9 8-9Z"/><circle cx="12" cy="12" r="2"/></>,
+      calendar: <><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></>,
+      players: <><circle cx="9" cy="8" r="3"/><path d="M3 20c.4-4 2.4-6 6-6s5.6 2 6 6M16 6.5a3 3 0 0 1 0 5.8M17 14c2.4.6 3.7 2.5 4 6"/></>,
+      target: <><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></>,
+      trophy: <><path d="M8 4h8v5a4 4 0 0 1-8 0V4ZM9 20h6M12 13v7M8 6H4v2c0 2 1.3 3 4 3M16 6h4v2c0 2-1.3 3-4 3"/></>,
+      flag: <><path d="M7 21V4M8 5h9l-2.5 3L17 11H8"/></>,
+    };
+    return icons[name] ?? icons.flag;
+  };
+  return <main className="tgt-menu-page">
+    <section className="tgt-menu-page-shell">
+      <header className="tgt-menu-page-head"><div><p>MIT TGT</p><h1>Menu</h1><span>Vælg hvor du vil hen</span></div></header>
+      <div className="tgt-menu-page-grid">
+        {menuItems.map((item)=><button type="button" key={item.view} onClick={()=>onNavigate(item.view)}><span className="tgt-menu-page-icon"><svg viewBox="0 0 24 24" aria-hidden="true">{icon(item.icon)}</svg></span><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><b aria-hidden="true">›</b></button>)}
+      </div>
+      <button type="button" className="tgt-menu-page-logout" onClick={onLogout}>Log ud</button>
+    </section>
+    <MitTgtBottomNav active="menu" onProfile={()=>onNavigate("profile")} onLeaderboard={()=>onNavigate("leaderboard")} onPlay={()=>onNavigate("play")} onLive={()=>onNavigate("live-leaderboard")} onMenu={()=>onNavigate("profile")} />
+    <style>{`
+      .tgt-menu-page{min-height:100dvh;padding:18px 14px calc(112px + env(safe-area-inset-bottom));color:#113c2d;background:linear-gradient(180deg,#dff0e5,#f7faf7 34%,#eef5f0)}
+      .tgt-menu-page-shell{width:min(860px,100%);margin:0 auto;overflow:hidden;border:1px solid rgba(15,117,75,.16);border-radius:28px;background:rgba(255,255,255,.95);box-shadow:0 18px 48px rgba(7,63,44,.12)}
+      .tgt-menu-page-head{padding:34px 24px;color:#fff;background:linear-gradient(145deg,#086844,#0e8654 62%,#167348)}
+      .tgt-menu-page-head p{margin:0 0 6px;font-size:11px;font-weight:900;letter-spacing:.18em}.tgt-menu-page-head h1{margin:0;font:700 clamp(40px,7vw,62px)/1 Georgia,serif}.tgt-menu-page-head span{display:block;margin-top:10px;color:rgba(255,255,255,.76)}
+      .tgt-menu-page-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:18px}.tgt-menu-page-grid button{width:100%;min-height:82px;display:grid;grid-template-columns:50px 1fr 20px;align-items:center;gap:14px;padding:14px 16px;border:1px solid #d7e6dc;border-radius:20px;color:#113c2d;background:#fff;text-align:left;box-shadow:0 8px 22px rgba(7,63,44,.06)}
+      .tgt-menu-page-grid button:active{transform:scale(.985)}.tgt-menu-page-icon{width:46px;height:46px;display:grid;place-items:center;border-radius:15px;color:#fff;background:linear-gradient(145deg,#27a467,#08794c)}.tgt-menu-page-icon svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.tgt-menu-page-grid strong{display:block;font-size:17px}.tgt-menu-page-grid small{display:block;margin-top:4px;color:#688077;font-size:12px}.tgt-menu-page-grid b{color:#df454d;font-size:28px;font-weight:400}
+      .tgt-menu-page-logout{display:block;width:calc(100% - 36px);min-height:50px;margin:0 18px 22px;border:1px solid rgba(223,69,77,.32);border-radius:16px;color:#b92f37;background:#fff;font-weight:900}
+      .tgt-menu-page-head h1{color:#fff!important}
+      .tgt-menu-page .tgt-fixed-bottom-nav{position:fixed!important;left:50%!important;right:auto!important;bottom:max(10px,env(safe-area-inset-bottom))!important;z-index:10000!important;width:min(620px,calc(100% - 20px))!important;height:72px!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-template-rows:72px!important;align-items:center!important;gap:0!important;margin:0!important;padding:7px 10px!important;transform:translateX(-50%)!important;box-sizing:border-box!important;overflow:visible!important;border:1px solid rgba(255,255,255,.22)!important;border-radius:25px!important;background:linear-gradient(180deg,rgba(8,91,59,.99),rgba(5,65,45,.99))!important;box-shadow:0 16px 42px rgba(7,63,44,.30),inset 0 1px 0 rgba(255,255,255,.14)!important}
+      .tgt-menu-page .tgt-fixed-nav-item{position:relative!important;appearance:none!important;width:100%!important;height:56px!important;min-width:0!important;min-height:56px!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;margin:0!important;padding:0!important;visibility:visible!important;opacity:1!important;border:0!important;border-radius:17px!important;color:rgba(238,250,242,.72)!important;background:transparent!important;box-shadow:none!important}
+      .tgt-menu-page .tgt-fixed-nav-item.is-active{color:#fff!important;background:rgba(255,255,255,.14)!important}.tgt-menu-page .tgt-fixed-nav-item.is-active:not(.tgt-fixed-nav-play):after{content:"";position:absolute;left:50%;bottom:3px;width:4px;height:4px;transform:translateX(-50%);border-radius:50%;background:#df454d;box-shadow:0 0 12px rgba(223,69,77,.75)}
+      .tgt-menu-page .tgt-fixed-nav-icon{width:23px!important;height:23px!important;display:block!important;color:currentColor!important}.tgt-menu-page .tgt-fixed-nav-icon svg{width:23px!important;height:23px!important;display:block!important;fill:none!important;stroke:currentColor!important;stroke-width:1.8!important;stroke-linecap:round!important;stroke-linejoin:round!important}.tgt-menu-page .tgt-fixed-nav-item small{display:block!important;color:currentColor!important;font-size:8px!important;font-weight:900!important;line-height:1!important;text-transform:uppercase!important}
+      .tgt-menu-page .tgt-fixed-nav-play{width:64px!important;min-width:64px!important;max-width:64px!important;height:64px!important;min-height:64px!important;justify-self:center!important;align-self:center!important;margin:-25px auto 0!important;border-radius:50%!important}.tgt-menu-page .tgt-fixed-play-disc{width:60px!important;height:60px!important;display:grid!important;place-items:center!important;border:2px solid #fff!important;border-radius:50%!important;color:#fff!important;background:linear-gradient(145deg,#ef5a61,#c9323a)!important;box-shadow:0 12px 27px rgba(95,22,27,.28),0 0 0 6px rgba(7,86,56,.98)!important;font-size:11px!important;font-weight:1000!important;letter-spacing:.10em!important}
+      @media(max-width:600px){.tgt-menu-page{padding:0 0 calc(104px + env(safe-area-inset-bottom))}.tgt-menu-page-shell{border:0;border-radius:0;box-shadow:none}.tgt-menu-page-head{padding:28px 18px}.tgt-menu-page-grid{grid-template-columns:1fr;padding:14px 10px}.tgt-menu-page-grid button{min-height:76px}.tgt-menu-page .tgt-fixed-bottom-nav{bottom:max(8px,env(safe-area-inset-bottom))!important;width:calc(100% - 18px)!important;height:70px!important;grid-template-rows:70px!important;padding:6px 8px!important;border-radius:23px!important}.tgt-menu-page .tgt-fixed-nav-item{height:54px!important;min-height:54px!important}.tgt-menu-page .tgt-fixed-nav-item small{font-size:7px!important}.tgt-menu-page .tgt-fixed-nav-play{margin:-23px auto 0!important}}
+    
+        /* FINAL AUTHENTICATED UI: no burger, no gold, fixed nav, full scroll room */
+        .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{padding-bottom:calc(132px + env(safe-area-inset-bottom))!important}
+        .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:64px!important;scroll-margin-bottom:140px!important}
+        .tgt-mit-tgt-universe .tgt-public-login-choice,.tgt-mit-tgt-universe .tgt-menu-button,.tgt-player-menu-button{display:none!important}
+        .tgt-mit-tgt-universe .tgt-public-topbar{justify-content:flex-start!important;background:linear-gradient(135deg,#075238,#0a6845)!important}
+        .tgt-mit-tgt-universe .tgt-public-topbar:after{content:"MIT TGT"!important;left:auto!important;right:16px!important;transform:none!important;color:#fff!important;font:900 10px/1 system-ui,sans-serif!important;letter-spacing:.16em!important}
+        .tgt-mit-tgt-universe .tgt-wordmark,.tgt-mit-tgt-universe .tgt-wordmark *,.tgt-player-appbar,.tgt-player-appbar *{color:#fff!important}
+        .tgt-mit-tgt-universe .tgt-wordmark-mark,.tgt-player-brandmark{border-color:rgba(255,255,255,.46)!important;color:#fff!important;background:rgba(255,255,255,.10)!important}
+        .tgt-mit-tgt-universe .eyebrow:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-player-shell .eyebrow{color:#168454!important}
+        .tgt-mit-tgt-universe h1:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-mit-tgt-universe h2:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-mit-tgt-universe h3:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-player-shell h1,.tgt-player-shell h2,.tgt-player-shell h3{color:#113c2d!important}
+        .tgt-player-head h1,.tgt-player-head h2,.tgt-player-head h3,.tgt-player-head p,.tgt-player-head span,.tgt-player-head .eyebrow,.tgt-menu-page-head h1,.tgt-menu-page-head p,.tgt-menu-page-head span{color:#fff!important}
+        .tgt-mit-tgt-universe th,.tgt-mit-tgt-universe td,.tgt-mit-tgt-universe .player-name,.tgt-mit-tgt-universe .score,.tgt-mit-tgt-universe .score-value,.tgt-player-shell .player-name{color:#113c2d!important}
+        .tgt-mit-tgt-universe .waiting,.tgt-mit-tgt-universe .pending,.tgt-mit-tgt-universe [class*="await"]{color:#688077!important}
+        .tgt-mit-tgt-universe .tgt-tabs button,.tgt-mit-tgt-universe .tgt-tab,.tgt-mit-tgt-universe .tgt-filter-button{color:#0b6543!important;background:#fff!important;border-color:#c8ddd0!important}
+        .tgt-mit-tgt-universe .tgt-tabs button.active,.tgt-mit-tgt-universe .tgt-tab.active,.tgt-mit-tgt-universe .tgt-filter-button.active{color:#fff!important;background:#168454!important;border-color:#168454!important}
+        .tgt-mit-tgt-universe .live-badge,.tgt-mit-tgt-universe .tgt-live-badge{color:#fff!important;background:#df454d!important;border-color:#df454d!important}
+        /* Classic podium palette remains visible */
+        .tgt-mit-tgt-universe .position-badge.position-1,.tgt-mit-tgt-universe .position-1{color:#513700!important;background:#f1c84b!important;border-color:#e0b52f!important}
+        .tgt-mit-tgt-universe .position-badge.position-2,.tgt-mit-tgt-universe .position-2{color:#33424b!important;background:#d9e0e4!important;border-color:#c4ced3!important}
+        .tgt-mit-tgt-universe .position-badge.position-3,.tgt-mit-tgt-universe .position-3{color:#5c3214!important;background:#dca56f!important;border-color:#c98e54!important}
+        .tgt-fixed-bottom-nav{bottom:max(10px,env(safe-area-inset-bottom))!important}
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{padding-bottom:calc(128px + env(safe-area-inset-bottom))!important}
+          .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:68px!important}
+          .tgt-mit-tgt-universe .tgt-public-topbar:after{right:12px!important}
+          .tgt-fixed-bottom-nav{bottom:max(8px,env(safe-area-inset-bottom))!important}
+        }
+`}</style>
+  </main>;
 }
 
-function SeasonPlayersAdmin({ season = 2027 }) {
+function PlayerDashboard({ session, onLogout, onStartScoring, onNavigate, initialMenuOpen = false, onProfileResolved }) {
+  const [profile,setProfile]=useState(null); const [results,setResults]=useState([]); const [playerStats,setPlayerStats]=useState({ holes:0, eagles:0, birdies:0, pars:0, bogeys:0, doublePlus:0, grossAverage:null }); const [position,setPosition]=useState(null); const [seasonScore,setSeasonScore]=useState(null); const [hcpDraft,setHcpDraft]=useState(""); const [editingHcp,setEditingHcp]=useState(false); const [savingHcp,setSavingHcp]=useState(false); const [message,setMessage]=useState(""); const [errorMessage,setErrorMessage]=useState(""); const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    let active=true;
+    async function load(){
+      setLoading(true);
+      setErrorMessage("");
+      const email=String(session.user.email??"").trim().toLowerCase();
+      const loginKey=email.split("@")[0].replace(/[^a-z0-9æøå]/gi,"").toLocaleLowerCase("da");
+      const normalizeIdentity=(value)=>String(value??"").trim().toLocaleLowerCase("da").replace(/@.*$/,"").replace(/[^a-z0-9æøå]/gi,"");
+
+      // Find the authenticated player directly, without an embedded season join.
+      // Exact e-mail is the primary link. Name/username is only a safe fallback.
+      let playerRows=[];
+      const exactResult=await supabase
+        .from("players")
+        .select("id,name,email,handicap_index,dgu_number,club_name,tournament_id,active")
+        .ilike("email",email);
+      if(!active)return;
+      if(exactResult.error){setErrorMessage(exactResult.error.message);setLoading(false);return;}
+      playerRows=exactResult.data??[];
+
+      if(playerRows.length===0){
+        const fallbackResult=await supabase
+          .from("players")
+          .select("id,name,email,handicap_index,dgu_number,club_name,tournament_id,active");
+        if(!active)return;
+        if(fallbackResult.error){setErrorMessage(fallbackResult.error.message);setLoading(false);return;}
+        playerRows=(fallbackResult.data??[]).filter((player)=>
+          normalizeIdentity(player.email)===loginKey||normalizeIdentity(player.name)===loginKey
+        );
+      }
+
+      const tournamentIds=[...new Set(playerRows.map((player)=>player.tournament_id).filter(Boolean))];
+      let tournamentById=new Map();
+      if(tournamentIds.length){
+        const tournamentResult=await supabase
+          .from("tournaments")
+          .select("id,season")
+          .in("id",tournamentIds);
+        if(!active)return;
+        if(tournamentResult.error){setErrorMessage(tournamentResult.error.message);setLoading(false);return;}
+        tournamentById=new Map((tournamentResult.data??[]).map((item)=>[String(item.id),item]));
+      }
+
+      let all=playerRows.map((player)=>({...player,tournaments:tournamentById.get(String(player.tournament_id))??null}));
+
+      // Some production RLS policies do not expose rows from players to a normal
+      // authenticated player. The public 2027 standings already expose the safe
+      // player id/name pair, so use that as a deterministic fallback for login.
+      // This keeps SPIL connected to the real 2027 player id.
+      if(!all.some((player)=>Number(player.tournaments?.season)===ACTIVE_SEASON)){
+        const standingsResult=await supabase
+          .from("season_individual_standings")
+          .select("player_id,player_name,season")
+          .eq("season",ACTIVE_SEASON);
+        if(!active)return;
+        if(standingsResult.error){setErrorMessage(standingsResult.error.message);setLoading(false);return;}
+        const standing=(standingsResult.data??[]).find((player)=>
+          normalizeIdentity(player.player_name)===loginKey
+        );
+        if(standing){
+          all=[{
+            id:standing.player_id,
+            name:standing.player_name,
+            email,
+            handicap_index:null,
+            dgu_number:null,
+            club_name:null,
+            tournament_id:null,
+            active:true,
+            tournaments:{season:ACTIVE_SEASON},
+          },...all];
+        }
+      }
+      const newest=all.find((player)=>Number(player.tournaments?.season)===ACTIVE_SEASON)??null;
+      const profileWithGolfData=newest?{
+        ...newest,
+        dgu_number:newest.dgu_number??all.find((player)=>player.dgu_number)?.dgu_number??null,
+        club_name:newest.club_name??all.find((player)=>player.club_name)?.club_name??null,
+      }:null;
+      setProfile(profileWithGolfData);
+      if(profileWithGolfData&&onProfileResolved)onProfileResolved(profileWithGolfData.id);
+      setHcpDraft(newest?.handicap_index??"");
+      if(!newest){setLoading(false);return;}
+
+      const activePlayerIds=[newest.id];
+      const [rr,sr,scoreResult]=await Promise.all([
+        supabase.from("round_results").select("player_id,round_number,score,tournaments!inner(season)").in("player_id",activePlayerIds).eq("tournaments.season",ACTIVE_SEASON).not("score","is",null),
+        supabase.from("season_individual_standings").select("player_id,player_name,counting_score,counting_rounds").eq("season",ACTIVE_SEASON),
+        supabase.from("scores").select("player_id,round_id,hole_number,strokes,rounds!inner(course_id,tournaments!inner(season))").in("player_id",activePlayerIds).eq("rounds.tournaments.season",ACTIVE_SEASON).not("strokes","is",null),
+      ]);
+      if(!active)return;
+      if(rr.error)setErrorMessage(rr.error.message);else setResults(rr.data??[]);
+      if(!scoreResult.error){
+        const scoreRows=scoreResult.data??[];
+        const courseIds=[...new Set(scoreRows.map((row)=>row.rounds?.course_id).filter(Boolean))];
+        let holeRows=[];
+        if(courseIds.length){
+          const holeResult=await supabase.from("course_holes").select("course_id,hole_number,par").in("course_id",courseIds);
+          if(!holeResult.error)holeRows=holeResult.data??[];
+        }
+        if(!active)return;
+        const parMap=new Map(holeRows.map((hole)=>[`${hole.course_id}-${hole.hole_number}`,Number(hole.par)]));
+        const stats=scoreRows.reduce((acc,row)=>{
+          const par=parMap.get(`${row.rounds?.course_id}-${row.hole_number}`);
+          const strokes=Number(row.strokes);
+          if(!Number.isFinite(par)||!Number.isFinite(strokes))return acc;
+          const toPar=strokes-par;
+          acc.holes+=1;acc.grossTotal+=strokes;
+          if(toPar<=-2)acc.eagles+=1;else if(toPar===-1)acc.birdies+=1;else if(toPar===0)acc.pars+=1;else if(toPar===1)acc.bogeys+=1;else acc.doublePlus+=1;
+          return acc;
+        },{holes:0,grossTotal:0,eagles:0,birdies:0,pars:0,bogeys:0,doublePlus:0});
+        setPlayerStats({...stats,grossAverage:stats.holes?stats.grossTotal/stats.holes:null});
+      }
+      if(!sr.error){
+        const sorted=sortStandings(sr.data??[]);
+        const i=sorted.findIndex((item)=>String(item.player_id)===String(newest.id));
+        setPosition(i>=0?i+1:null);
+        setSeasonScore(i>=0?sorted[i].counting_score:null);
+      }
+      setLoading(false);
+    }
+    load();
+    return()=>{active=false};
+  },[session.user.email]);
+  async function saveHandicap(){const value=Number(String(hcpDraft).replace(",","."));if(!Number.isFinite(value)||value<-10||value>54){setErrorMessage("Handicap skal være mellem -10 og 54.");return;}setSavingHcp(true);setErrorMessage("");setMessage("");const {error}=await supabase.from("players").update({handicap_index:value}).eq("id",profile.id);setSavingHcp(false);if(error){setErrorMessage(error.message);return;}setProfile(current=>({...current,handicap_index:value}));setHcpDraft(value);setEditingHcp(false);setMessage("Dit handicap er opdateret.");}
+  const dguNumber = profile?.dgu_number ?? profile?.dguNumber ?? session.user.user_metadata?.dgu_number ?? session.user.user_metadata?.dguNumber ?? "Ikke angivet";
+  const clubName = profile?.club_name ?? profile?.clubName ?? session.user.user_metadata?.club_name ?? session.user.user_metadata?.clubName ?? "Ikke angivet";
+  const latest=[...results].sort((a,b)=>Number(b.tournaments?.season??0)-Number(a.tournaments?.season??0)||Number(b.round_number??0)-Number(a.round_number??0)).slice(0,8);
+  return <main className="tgt-player-shell"><style>{`.tgt-player-shell{min-height:100dvh;padding:clamp(12px,4vw,46px);padding-bottom:calc(112px + env(safe-area-inset-bottom));background:radial-gradient(circle at 12% 4%,rgba(211,170,82,.15),transparent 27%),linear-gradient(155deg,#031f17,#073727 48%,#0a4935)}
+        .tgt-player-shell .tgt-mobile-bottom-nav{position:fixed!important;left:0!important;right:0!important;bottom:0!important;z-index:120!important;width:100%!important;max-width:none!important;height:calc(64px + env(safe-area-inset-bottom))!important;min-height:64px!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-template-rows:56px!important;align-items:center!important;margin:0!important;padding:4px 8px calc(4px + env(safe-area-inset-bottom))!important;transform:none!important;border:0!important;border-top:1px solid rgba(240,207,130,.26)!important;border-radius:0!important;background:rgba(4,37,27,.985)!important;box-shadow:0 -10px 30px rgba(2,24,17,.22)!important;backdrop-filter:blur(18px)!important;overflow:visible!important}
+        .tgt-player-shell .tgt-mobile-bottom-nav button{position:relative!important;width:100%!important;min-width:0!important;max-width:none!important;height:50px!important;min-height:50px!important;display:grid!important;place-items:center!important;margin:0!important;padding:0!important;border:0!important;border-radius:12px!important;background:transparent!important;color:rgba(247,223,153,.62)!important;cursor:pointer!important}
+        .tgt-player-shell .tgt-mobile-bottom-nav button.active{color:#f7df99!important;background:rgba(240,207,130,.08)!important}
+        .tgt-player-shell .tgt-mobile-bottom-nav button>span:not(.tgt-bottom-play-icon){width:24px!important;height:24px!important;display:grid!important;place-items:center!important;font-size:21px!important;line-height:1!important}
+        .tgt-player-shell .tgt-mobile-bottom-nav button small{display:none!important;width:0!important;height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+        .tgt-player-shell .tgt-mobile-bottom-nav .tgt-bottom-play{width:58px!important;min-width:58px!important;max-width:58px!important;height:58px!important;min-height:58px!important;justify-self:center!important;align-self:center!important;margin:-18px auto 0!important;padding:0!important;border-radius:50%!important;background:transparent!important}
+        .tgt-player-shell .tgt-bottom-play-icon{width:54px!important;height:54px!important;display:grid!important;place-items:center!important;border:2px solid #f4d98d!important;border-radius:50%!important;background:linear-gradient(145deg,#e9cb74,#ae7625)!important;box-shadow:0 7px 19px rgba(0,0,0,.28),0 0 0 4px rgba(4,37,27,.985)!important;font-size:23px!important;line-height:1!important}
+        .tgt-player-shell .tgt-mobile-bottom-nav .tgt-bottom-play small{display:none!important}.tgt-player-home{width:min(1120px,100%);margin:auto;overflow:hidden;border:1px solid rgba(240,207,130,.42);border-radius:24px;background:#f7f4ec;box-shadow:0 28px 80px rgba(0,0,0,.28)}.tgt-player-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:clamp(18px,3vw,28px);color:#f5dc93;background:linear-gradient(135deg,#04251b,#0a4935)}.tgt-player-head h1{margin:5px 0;color:#f5dc93!important;font-family:Georgia,serif;font-size:clamp(29px,4.5vw,43px)}.tgt-player-meta{display:flex;flex-direction:column;align-items:flex-start;gap:3px;margin-top:7px;color:#e7cf8c;font-size:13px;font-weight:750}.tgt-player-meta span{display:inline-flex;align-items:center;gap:5px}.tgt-player-actions{display:flex;gap:9px;flex-wrap:wrap}.tgt-player-actions button{min-height:44px;padding:0 16px;border:1px solid rgba(240,207,130,.45);border-radius:999px;color:#f7df99;background:rgba(2,27,20,.48);font-weight:900}.tgt-player-content{padding:clamp(14px,3vw,26px)}.tgt-player-intro{display:flex;align-items:center;gap:16px}.tgt-player-avatar{width:52px;height:52px;min-width:52px;display:grid;place-items:center;border-radius:50%;background:linear-gradient(135deg,#f1d686,#b9822e);color:#123629;font:900 21px Georgia}.tgt-player-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:13px 0 16px}.tgt-player-kpi,.tgt-player-panel{padding:13px;border:1px solid rgba(25,65,48,.12);border-radius:18px;background:#fffdf8}.tgt-player-kpi span{display:block;color:#78827d;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.tgt-player-kpi strong{display:block;margin-top:5px;color:#164432;font-size:21px}.tgt-player-grid{display:grid;grid-template-columns:1.35fr .65fr;gap:16px;align-items:start}.tgt-player-intro h2{color:#173d2e}.tgt-player-intro span{color:#78827d}.tgt-player-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.tgt-player-stat{min-height:78px;padding:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;border:1px solid rgba(199,154,66,.26);border-radius:13px;background:#f8f4e9;text-align:center}.tgt-player-stat strong{color:#164432;font-size:21px}.tgt-player-stat small{color:#78827d;font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.tgt-player-result{display:flex;justify-content:space-between;padding:14px 0;border-bottom:1px solid #e1e8e3}.tgt-player-result strong{color:#a57525}.tgt-hcp-link{width:30px;height:30px;display:inline-grid;place-items:center;margin:7px auto 0;padding:0;border:1px solid rgba(165,117,37,.38);border-radius:50%;background:#f8f4e9;color:#a57525;font-size:14px;line-height:1;cursor:pointer}.tgt-hcp-link:hover{background:#eee4cf}.tgt-player-primary{width:100%;min-height:50px;margin:12px 0 3px;border:1px solid #c99a42;border-radius:14px;color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935);font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 10px 24px rgba(3,31,23,.14)}.tgt-hcp-edit{display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-top:12px}.tgt-hcp-edit input{min-width:0;padding:11px;border:1px solid #cad5cc;border-radius:10px}.tgt-hcp-edit button{padding:0 13px;border-radius:10px;border:1px solid #c99a42;font-weight:900}.tgt-hcp-save{background:#073727;color:#f7df99}.tgt-coming article{padding:14px;margin-top:9px;border-radius:13px;background:#f8f4e9}.tgt-player-start{width:100%;min-height:54px;margin-top:9px;border:1px solid #c99a42;border-radius:13px;color:#f7df99;background:linear-gradient(145deg,#073727,#0a4935);font-size:16px;font-weight:900;cursor:pointer}.tgt-coming small{display:block;margin-top:4px;color:#78827d}@media(max-width:820px){.tgt-player-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.tgt-player-kpis{grid-template-columns:repeat(2,1fr)}.tgt-player-grid{grid-template-columns:1fr}}@media(max-width:600px){.tgt-player-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tgt-player-shell{padding:0}.tgt-player-home{min-height:100dvh;border:0;border-radius:0}.tgt-player-head{align-items:flex-start;flex-direction:column;padding:18px 16px}.tgt-player-actions{width:100%}.tgt-player-actions button{flex:1}.tgt-player-content{padding:12px 10px 24px}.tgt-player-avatar{width:50px;height:50px;min-width:50px}.tgt-player-kpis{gap:8px;margin:12px 0 16px}.tgt-player-kpi{padding:11px;min-height:82px}.tgt-player-kpi strong{font-size:19px}.tgt-player-grid{grid-template-columns:1fr}.tgt-hcp-edit{grid-template-columns:1fr 1fr}.tgt-hcp-edit input{grid-column:1/-1}}
+        @media(min-width:601px){
+          .tgt-player-shell{padding:20px 14px calc(90px + env(safe-area-inset-bottom))!important}
+          .tgt-player-home{width:min(860px,100%)!important}
+          .tgt-player-head{padding:22px 20px!important}
+          .tgt-player-content{padding:18px 16px 34px!important}
+          .tgt-player-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+          .tgt-player-grid{grid-template-columns:1fr!important}
+          .tgt-player-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+          .tgt-player-shell .tgt-mobile-bottom-nav{left:50%!important;right:auto!important;width:min(860px,100%)!important;transform:translateX(-50%)!important}
+        }
+        /* Final premium bottom-navigation override */
+        .tgt-mit-tgt-universe{padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
+        .tgt-mit-tgt-universe .main-content{padding-bottom:42px!important;scroll-margin-bottom:120px!important}
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav,
+        .tgt-player-shell .tgt-mobile-bottom-nav{
+          position:fixed!important;left:50%!important;right:auto!important;bottom:max(10px,env(safe-area-inset-bottom))!important;z-index:9999!important;
+          width:min(620px,calc(100% - 24px))!important;height:68px!important;min-height:68px!important;
+          display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-template-rows:68px!important;align-items:center!important;
+          padding:6px 10px!important;margin:0!important;transform:translateX(-50%)!important;
+          border:1px solid rgba(244,217,141,.30)!important;border-radius:24px!important;
+          background:linear-gradient(180deg,rgba(8,55,40,.96),rgba(3,34,25,.98))!important;
+          box-shadow:0 18px 46px rgba(0,24,17,.34),inset 0 1px 0 rgba(255,255,255,.08)!important;
+          backdrop-filter:blur(20px) saturate(130%)!important;-webkit-backdrop-filter:blur(20px) saturate(130%)!important;
+          overflow:visible!important;box-sizing:border-box!important
+        }
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav button,
+        .tgt-player-shell .tgt-mobile-bottom-nav button{
+          position:relative!important;width:100%!important;height:52px!important;min-width:0!important;min-height:52px!important;
+          display:grid!important;place-items:center!important;margin:0!important;padding:0!important;border:0!important;border-radius:17px!important;
+          background:transparent!important;color:rgba(247,223,153,.66)!important;box-shadow:none!important;
+          transition:background .18s ease,color .18s ease,transform .18s ease!important
+        }
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav button:active,
+        .tgt-player-shell .tgt-mobile-bottom-nav button:active{transform:scale(.94)!important}
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav button.active,
+        .tgt-player-shell .tgt-mobile-bottom-nav button.active{color:#ffe7a1!important;background:rgba(244,217,141,.10)!important}
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav button.active:after,
+        .tgt-player-shell .tgt-mobile-bottom-nav button.active:after{content:""!important;position:absolute!important;left:50%!important;bottom:4px!important;width:4px!important;height:4px!important;transform:translateX(-50%)!important;border-radius:50%!important;background:#f4d98d!important;box-shadow:0 0 12px rgba(244,217,141,.75)!important}
+        .tgt-mit-tgt-universe .tgt-nav-glyph,.tgt-player-shell .tgt-nav-glyph{width:23px!important;height:23px!important;opacity:.96!important}
+        .tgt-mit-tgt-universe .tgt-mobile-bottom-nav .tgt-bottom-play,
+        .tgt-player-shell .tgt-mobile-bottom-nav .tgt-bottom-play{width:64px!important;min-width:64px!important;max-width:64px!important;height:64px!important;min-height:64px!important;justify-self:center!important;align-self:center!important;margin:-22px auto 0!important;border-radius:50%!important;background:transparent!important}
+        .tgt-mit-tgt-universe .tgt-bottom-play-icon,.tgt-player-shell .tgt-bottom-play-icon{width:60px!important;height:60px!important;display:grid!important;place-items:center!important;transform:none!important;border:2px solid rgba(255,239,182,.92)!important;border-radius:50%!important;color:#073326!important;background:linear-gradient(145deg,#ffefb0 0%,#e1bd61 48%,#b77b28 100%)!important;box-shadow:0 12px 28px rgba(0,0,0,.34),0 0 0 5px rgba(5,42,31,.94),inset 0 1px 0 rgba(255,255,255,.55)!important;font-size:11px!important;font-weight:1000!important;letter-spacing:.10em!important}
+        .tgt-player-shell{padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
+        .tgt-player-shell .tgt-player-content{padding-bottom:44px!important;scroll-margin-bottom:120px!important}
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe,.tgt-player-shell{padding-bottom:calc(108px + env(safe-area-inset-bottom))!important}
+          .tgt-mit-tgt-universe .tgt-mobile-bottom-nav,.tgt-player-shell .tgt-mobile-bottom-nav{bottom:max(8px,env(safe-area-inset-bottom))!important;width:calc(100% - 20px)!important;border-radius:22px!important}
+        }
+
+        /* Unified Mit TGT profile shell */
+        .tgt-player-home{max-width:860px!important;border-radius:26px!important}
+        .tgt-player-appbar{position:sticky;top:0;z-index:90;min-height:64px;display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid rgba(244,217,141,.20);color:#f7df99;background:rgba(3,39,28,.97);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+        .tgt-player-brand{display:flex;align-items:center;gap:10px}.tgt-player-brandmark{width:40px;height:40px;display:grid;place-items:center;border:1px solid rgba(244,217,141,.68);border-radius:50%;font:900 14px Georgia;color:#f4d98d}.tgt-player-brand strong{display:block;font-size:11px;letter-spacing:.16em}.tgt-player-brand small{display:block;margin-top:3px;color:rgba(247,223,153,.58);font-size:8px;letter-spacing:.10em}.tgt-player-menu-button{width:42px!important;height:42px!important;min-width:42px!important;display:grid!important;place-items:center!important;padding:0!important;border:1px solid rgba(244,217,141,.30)!important;border-radius:50%!important;color:#f4d98d!important;background:rgba(255,255,255,.035)!important}
+        .tgt-player-head{padding:30px 24px 28px!important}.tgt-player-head h1{font-size:clamp(34px,6vw,52px)!important}.tgt-player-content{background:linear-gradient(180deg,#f7f4ec,#efe9dd)!important}.tgt-player-primary{border-radius:999px!important;box-shadow:0 10px 22px rgba(4,47,34,.16)!important}.tgt-player-kpi,.tgt-player-panel{border-radius:20px!important;box-shadow:0 8px 24px rgba(12,47,34,.06)!important}
+        .tgt-player-shell .tgt-mobile-bottom-nav{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+        .tgt-player-shell .tgt-mobile-bottom-nav>button{display:grid!important;visibility:visible!important;opacity:1!important}
+        @media(max-width:600px){.tgt-player-home{border-radius:0!important}.tgt-player-head{padding:24px 16px 22px!important}.tgt-player-actions{display:none!important}.tgt-player-content{padding:14px 10px 38px!important}}
+
+        /* Definitive Mit TGT bottom nav. Unique selectors override all legacy nav CSS. */
+        .tgt-fixed-bottom-nav{position:fixed!important;left:50%!important;right:auto!important;bottom:max(10px,env(safe-area-inset-bottom))!important;z-index:10000!important;width:min(620px,calc(100% - 20px))!important;height:72px!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-template-rows:72px!important;align-items:center!important;gap:0!important;margin:0!important;padding:7px 10px!important;transform:translateX(-50%)!important;box-sizing:border-box!important;overflow:visible!important;border:1px solid rgba(244,217,141,.34)!important;border-radius:25px!important;background:linear-gradient(180deg,rgba(8,61,43,.98),rgba(3,38,27,.99))!important;box-shadow:0 18px 48px rgba(0,25,18,.38),inset 0 1px 0 rgba(255,255,255,.09)!important;backdrop-filter:blur(20px)!important;-webkit-backdrop-filter:blur(20px)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item{position:relative!important;appearance:none!important;-webkit-appearance:none!important;width:100%!important;height:56px!important;min-width:0!important;min-height:56px!important;max-width:none!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;margin:0!important;padding:0!important;visibility:visible!important;opacity:1!important;overflow:visible!important;border:0!important;border-radius:17px!important;color:rgba(255,232,165,.68)!important;background:transparent!important;box-shadow:none!important;transform:none!important;cursor:pointer!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#ffe8a3!important;background:rgba(244,217,141,.11)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active:not(.tgt-fixed-nav-play):after{content:""!important;position:absolute!important;left:50%!important;bottom:3px!important;width:4px!important;height:4px!important;transform:translateX(-50%)!important;border-radius:50%!important;background:#f4d98d!important;box-shadow:0 0 10px rgba(244,217,141,.8)!important}
+        .tgt-fixed-nav-icon{width:23px!important;height:23px!important;display:block!important;visibility:visible!important;opacity:1!important;color:currentColor!important}
+        .tgt-fixed-nav-icon svg{width:23px!important;height:23px!important;display:block!important;overflow:visible!important;fill:none!important;stroke:currentColor!important;stroke-width:1.8!important;stroke-linecap:round!important;stroke-linejoin:round!important}
+        .tgt-fixed-nav-item small{display:block!important;width:auto!important;height:auto!important;margin:0!important;padding:0!important;overflow:visible!important;color:currentColor!important;font-size:8px!important;font-weight:900!important;line-height:1!important;letter-spacing:.05em!important;text-transform:uppercase!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-play{width:64px!important;min-width:64px!important;max-width:64px!important;height:64px!important;min-height:64px!important;justify-self:center!important;align-self:center!important;margin:-25px auto 0!important;border-radius:50%!important;background:transparent!important}
+        .tgt-fixed-play-disc{width:60px!important;height:60px!important;display:grid!important;place-items:center!important;visibility:visible!important;opacity:1!important;border:2px solid #fff0ba!important;border-radius:50%!important;color:#073326!important;background:linear-gradient(145deg,#fff0b2 0%,#dfb958 50%,#b87b29 100%)!important;box-shadow:0 12px 28px rgba(0,0,0,.36),0 0 0 6px rgba(4,42,31,.98),inset 0 1px 0 rgba(255,255,255,.58)!important;font-size:11px!important;font-weight:1000!important;line-height:1!important;letter-spacing:.10em!important}
+        .tgt-fixed-nav-item:active{transform:scale(.94)!important}.tgt-fixed-nav-item:disabled{opacity:.46!important;cursor:not-allowed!important}
+        @media(max-width:700px){.tgt-fixed-bottom-nav{bottom:max(8px,env(safe-area-inset-bottom))!important;width:calc(100% - 18px)!important;height:70px!important;grid-template-rows:70px!important;padding:6px 8px!important;border-radius:23px!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item{height:54px!important;min-height:54px!important}.tgt-fixed-nav-item small{font-size:7px!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-play{margin:-23px auto 0!important}}
+
+        /* TGT golf theme: green, black and red. Gold is reserved for Hall of Fame. */
+        .tgt-fixed-bottom-nav{border-color:rgba(255,255,255,.12)!important;background:linear-gradient(180deg,rgba(15,20,18,.98),rgba(3,9,7,.99))!important;box-shadow:0 16px 42px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.07)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item{color:rgba(234,241,237,.62)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#fff!important;background:rgba(27,111,70,.30)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active:not(.tgt-fixed-nav-play):after{background:#d8343a!important;box-shadow:0 0 12px rgba(216,52,58,.8)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item:nth-child(4){color:#ef6b70!important}
+        .tgt-fixed-play-disc{border-color:#f1f5f2!important;color:#fff!important;background:linear-gradient(145deg,#d9454b,#9f1f25)!important;box-shadow:0 12px 28px rgba(0,0,0,.38),0 0 0 6px rgba(5,24,17,.98),inset 0 1px 0 rgba(255,255,255,.25)!important}
+        .tgt-player-appbar{border-bottom-color:rgba(255,255,255,.10)!important;color:#fff!important;background:rgba(5,35,25,.98)!important}
+        .tgt-player-brandmark{border-color:rgba(255,255,255,.30)!important;color:#fff!important;background:#07140f!important}
+        .tgt-player-brand strong{color:#fff!important}.tgt-player-brand small{color:rgba(226,237,230,.60)!important}
+        .tgt-player-menu-button{border-color:rgba(255,255,255,.20)!important;color:#fff!important;background:#07140f!important}
+        .tgt-top-menu-svg{width:23px!important;height:23px!important;display:block!important;fill:none!important;stroke:currentColor!important;stroke-width:2!important;stroke-linecap:round!important}
+        .tgt-player-head{background:linear-gradient(145deg,#063d2a,#075438)!important;color:#fff!important}
+        .tgt-player-head .eyebrow,.tgt-player-head h1,.tgt-player-head span{color:#fff!important}
+        .tgt-player-head .tgt-player-actions button{border-color:rgba(255,255,255,.30)!important;color:#fff!important;background:#07140f!important}
+        .tgt-player-content{background:#f3f5f3!important}
+        .tgt-player-primary{border-color:#0d6843!important;color:#fff!important;background:linear-gradient(135deg,#0b6842,#06442e)!important}
+        .tgt-player-kpi,.tgt-player-panel{border-color:#dbe2dd!important;background:#fff!important;box-shadow:0 8px 24px rgba(7,31,22,.07)!important}
+        .tgt-player-kpi strong,.tgt-player-panel h2,.tgt-player-panel h3{color:#0a3d2a!important}
+        .tgt-player-avatar{color:#fff!important;background:linear-gradient(145deg,#0f754b,#073d2a)!important}
+        .tgt-drawer{border-color:rgba(255,255,255,.12)!important;background:#07140f!important;color:#fff!important}
+        .tgt-drawer-head{border-bottom-color:rgba(255,255,255,.10)!important}.tgt-drawer-head h2,.tgt-drawer-head .eyebrow{color:#fff!important}
+        .tgt-drawer-close{border-color:rgba(255,255,255,.18)!important;color:#fff!important;background:#111a16!important}
+        .tgt-drawer-nav button{border-color:rgba(255,255,255,.09)!important;color:#eef4f0!important;background:#0b2419!important}
+        .tgt-drawer-nav button:hover{background:#103522!important}
+        .tgt-hall-fullscreen,.tgt-hall-panel,.tgt-hall-card{--hall-gold:#d6b25e}
+
+        /* Fresh golf theme: inviting fairway greens with restrained coral-red energy. Hall of Fame keeps its own gold styling. */
+        :root{--tgt-forest:#073f2c;--tgt-deep:#052f22;--tgt-fairway:#168454;--tgt-fairway-light:#39a86f;--tgt-mint:#eaf5ee;--tgt-paper:#f7faf7;--tgt-white:#ffffff;--tgt-red:#df454d;--tgt-red-dark:#b92f37;--tgt-ink:#113c2d;--tgt-muted:#688077}
+        .tgt-public-shell,.tgt-player-shell{background:linear-gradient(180deg,#dff0e5 0%,#f7faf7 30%,#eef5f0 100%)!important;color:var(--tgt-ink)!important}
+        .tgt-public-topbar,.tgt-player-appbar{border-bottom:1px solid rgba(255,255,255,.18)!important;background:linear-gradient(135deg,#075238,#0a6845)!important;color:#fff!important;box-shadow:0 8px 24px rgba(7,63,44,.14)!important}
+        .tgt-wordmark-mark,.tgt-player-brandmark{border-color:rgba(255,255,255,.48)!important;color:#fff!important;background:rgba(255,255,255,.10)!important}
+        .tgt-wordmark strong,.tgt-player-brand strong{color:#fff!important}.tgt-wordmark small,.tgt-player-brand small{color:rgba(255,255,255,.72)!important}
+        .tgt-menu-button,.tgt-player-menu-button{border-color:rgba(255,255,255,.34)!important;color:#fff!important;background:rgba(255,255,255,.12)!important;box-shadow:none!important}
+        .tgt-premium-hero,.tgt-player-head{background:linear-gradient(145deg,#086844 0%,#0e8654 62%,#167348 100%)!important;color:#fff!important}
+        .tgt-premium-hero:before,.tgt-player-head:before{background:radial-gradient(circle at 82% 20%,rgba(255,255,255,.15),transparent 30%)!important}
+        .tgt-premium-hero h1,.tgt-player-head h1,.tgt-premium-hero .eyebrow,.tgt-player-head .eyebrow,.tgt-player-head span{color:#fff!important}
+        .tgt-player-content,.main-content,.tgt-app-lobby{background:transparent!important}
+        .leaderboard-card,.tgt-player-kpi,.tgt-player-panel,.tgt-lobby-grid button,.tgt-round-card,.tgt-live-card{border-color:#d7e6dc!important;background:rgba(255,255,255,.94)!important;box-shadow:0 10px 28px rgba(7,63,44,.08)!important}
+        .leaderboard-card h2,.leaderboard-card h3,.tgt-player-kpi strong,.tgt-player-panel h2,.tgt-player-panel h3,.tgt-lobby-grid strong{color:var(--tgt-ink)!important}
+        .eyebrow:not(.tgt-hall-fullscreen .eyebrow):not(.tgt-hall-panel .eyebrow){color:var(--tgt-fairway)!important}
+        .tgt-player-avatar{color:#fff!important;background:linear-gradient(145deg,#27a467,#08794c)!important;box-shadow:0 8px 18px rgba(22,132,84,.22)!important}
+        .tgt-player-primary,.login-submit-button,.tgt-primary-action{border-color:#0d7b4e!important;color:#fff!important;background:linear-gradient(135deg,#1b985f,#0c7048)!important;box-shadow:0 10px 22px rgba(22,132,84,.20)!important}
+        .tgt-player-primary:hover,.login-submit-button:hover,.tgt-primary-action:hover{background:linear-gradient(135deg,#20a768,#0e7b4f)!important}
+        .tgt-secondary-action,.login-cancel-button{border-color:#bcd6c5!important;color:#0b6543!important;background:#fff!important}
+        .tgt-tabs button.active,.tgt-tab.active,.tgt-filter-button.active{border-color:#168454!important;color:#fff!important;background:#168454!important}
+        .live-badge,.tgt-live-badge{border-color:rgba(223,69,77,.28)!important;color:#fff!important;background:var(--tgt-red)!important}
+        .tgt-fixed-bottom-nav{border-color:rgba(255,255,255,.22)!important;background:linear-gradient(180deg,rgba(8,91,59,.99),rgba(5,65,45,.99))!important;box-shadow:0 16px 42px rgba(7,63,44,.30),inset 0 1px 0 rgba(255,255,255,.14)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item{color:rgba(238,250,242,.72)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#fff!important;background:rgba(255,255,255,.14)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active:not(.tgt-fixed-nav-play):after{background:var(--tgt-red)!important;box-shadow:0 0 12px rgba(223,69,77,.75)!important}
+        .tgt-fixed-bottom-nav .tgt-fixed-nav-item:nth-child(4){color:#ffd9db!important}
+        .tgt-fixed-play-disc{border-color:#fff!important;color:#fff!important;background:linear-gradient(145deg,#ef5a61,#c9323a)!important;box-shadow:0 12px 27px rgba(95,22,27,.28),0 0 0 6px rgba(7,86,56,.98),inset 0 1px 0 rgba(255,255,255,.30)!important}
+        .tgt-drawer{border-color:rgba(255,255,255,.18)!important;background:linear-gradient(160deg,#07543a,#0b7049)!important;color:#fff!important}
+        .tgt-drawer-head{border-bottom-color:rgba(255,255,255,.15)!important}.tgt-drawer-head h2,.tgt-drawer-head .eyebrow{color:#fff!important}
+        .tgt-drawer-close{border-color:rgba(255,255,255,.28)!important;color:#fff!important;background:rgba(255,255,255,.12)!important}
+        .tgt-drawer-nav button{border-color:rgba(255,255,255,.12)!important;color:#fff!important;background:rgba(255,255,255,.09)!important}
+        .tgt-drawer-nav button:hover{background:rgba(255,255,255,.16)!important}
+        .status-box{border-color:#d3e6da!important;color:#45685a!important;background:#eff7f2!important}
+        .tgt-player-stat{background:#eff7f2!important}.tgt-player-stat strong{color:#08764a!important}
+        .tgt-hall-fullscreen,.tgt-hall-panel,.tgt-hall-card{--hall-gold:#d6b25e}
+
+/* Final anti-gold pass outside Hall of Fame */
+.tgt-public-topbar,.tgt-player-appbar,.tgt-mit-tgt-universe{--tgt-gold-replacement:#ffffff}
+.tgt-public-topbar *, .tgt-player-appbar *, .tgt-mit-tgt-universe .eyebrow, .tgt-mit-tgt-universe h1, .tgt-mit-tgt-universe h2, .tgt-mit-tgt-universe h3 {color:inherit}
+.tgt-mit-tgt-universe .tgt-wordmark, .tgt-mit-tgt-universe .tgt-public-login-choice, .tgt-mit-tgt-universe .tgt-score-label, .tgt-mit-tgt-universe .position-1, .tgt-mit-tgt-universe .position-2, .tgt-mit-tgt-universe .position-3 {color:#113c2d!important}
+.tgt-mit-tgt-universe .position-badge{background:#eaf5ee!important;color:#0b6543!important}
+.tgt-mit-tgt-universe .position-1,.tgt-mit-tgt-universe .position-2,.tgt-mit-tgt-universe .position-3{background:#eaf5ee!important}
+
+        /* FINAL AUTHENTICATED UI: no burger, no gold, fixed nav, full scroll room */
+        .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{padding-bottom:calc(132px + env(safe-area-inset-bottom))!important}
+        .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:64px!important;scroll-margin-bottom:140px!important}
+        .tgt-mit-tgt-universe .tgt-public-login-choice,.tgt-mit-tgt-universe .tgt-menu-button,.tgt-player-menu-button{display:none!important}
+        .tgt-mit-tgt-universe .tgt-public-topbar{justify-content:flex-start!important;background:linear-gradient(135deg,#075238,#0a6845)!important}
+        .tgt-mit-tgt-universe .tgt-public-topbar:after{content:"MIT TGT"!important;left:auto!important;right:16px!important;transform:none!important;color:#fff!important;font:900 10px/1 system-ui,sans-serif!important;letter-spacing:.16em!important}
+        .tgt-mit-tgt-universe .tgt-wordmark,.tgt-mit-tgt-universe .tgt-wordmark *,.tgt-player-appbar,.tgt-player-appbar *{color:#fff!important}
+        .tgt-mit-tgt-universe .tgt-wordmark-mark,.tgt-player-brandmark{border-color:rgba(255,255,255,.46)!important;color:#fff!important;background:rgba(255,255,255,.10)!important}
+        .tgt-mit-tgt-universe .eyebrow:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-player-shell .eyebrow{color:#168454!important}
+        .tgt-mit-tgt-universe h1:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-mit-tgt-universe h2:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-mit-tgt-universe h3:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-player-shell h1,.tgt-player-shell h2,.tgt-player-shell h3{color:#113c2d!important}
+        .tgt-player-head h1,.tgt-player-head h2,.tgt-player-head h3,.tgt-player-head p,.tgt-player-head span,.tgt-player-head .eyebrow,.tgt-menu-page-head h1,.tgt-menu-page-head p,.tgt-menu-page-head span{color:#fff!important}
+        .tgt-mit-tgt-universe th,.tgt-mit-tgt-universe td,.tgt-mit-tgt-universe .player-name,.tgt-mit-tgt-universe .score,.tgt-mit-tgt-universe .score-value,.tgt-player-shell .player-name{color:#113c2d!important}
+        .tgt-mit-tgt-universe .waiting,.tgt-mit-tgt-universe .pending,.tgt-mit-tgt-universe [class*="await"]{color:#688077!important}
+        .tgt-mit-tgt-universe .tgt-tabs button,.tgt-mit-tgt-universe .tgt-tab,.tgt-mit-tgt-universe .tgt-filter-button{color:#0b6543!important;background:#fff!important;border-color:#c8ddd0!important}
+        .tgt-mit-tgt-universe .tgt-tabs button.active,.tgt-mit-tgt-universe .tgt-tab.active,.tgt-mit-tgt-universe .tgt-filter-button.active{color:#fff!important;background:#168454!important;border-color:#168454!important}
+        .tgt-mit-tgt-universe .live-badge,.tgt-mit-tgt-universe .tgt-live-badge{color:#fff!important;background:#df454d!important;border-color:#df454d!important}
+        /* Classic podium palette remains visible */
+        .tgt-mit-tgt-universe .position-badge.position-1,.tgt-mit-tgt-universe .position-1{color:#513700!important;background:#f1c84b!important;border-color:#e0b52f!important}
+        .tgt-mit-tgt-universe .position-badge.position-2,.tgt-mit-tgt-universe .position-2{color:#33424b!important;background:#d9e0e4!important;border-color:#c4ced3!important}
+        .tgt-mit-tgt-universe .position-badge.position-3,.tgt-mit-tgt-universe .position-3{color:#5c3214!important;background:#dca56f!important;border-color:#c98e54!important}
+        .tgt-fixed-bottom-nav{bottom:max(10px,env(safe-area-inset-bottom))!important}
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{padding-bottom:calc(128px + env(safe-area-inset-bottom))!important}
+          .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:68px!important}
+          .tgt-mit-tgt-universe .tgt-public-topbar:after{right:12px!important}
+          .tgt-fixed-bottom-nav{bottom:max(8px,env(safe-area-inset-bottom))!important}
+        }
+
+        /* Final release logo and compact-copy pass */
+        .tgt-wordmark-mark,.tgt-player-brandmark{border-color:rgba(255,255,255,.58)!important;color:#fff!important;background:#0b7049!important;text-shadow:none!important}
+        .tgt-wordmark,.tgt-wordmark>span,.tgt-wordmark small,.tgt-player-brand,.tgt-player-brand strong,.tgt-player-brand small{color:#fff!important;text-shadow:none!important}
+        .tgt-public-topbar .tgt-wordmark>span:last-child{color:#fff!important}
+        .tgt-public-topbar .tgt-wordmark small{color:rgba(255,255,255,.72)!important}
+        .tgt-mit-tgt-universe .leaderboard-card>.card-header .description{display:none!important}
+`}</style><section className="tgt-player-home">
+  <header className="tgt-player-appbar">
+    <div className="tgt-player-brand"><span className="tgt-player-brandmark">TGT</span><span><strong>MIT TGT</strong><small>THE GOLDEN TEE TOUR</small></span></div>
+
+  </header>
+  <section className="tgt-player-head"><div><p className="eyebrow" style={{color:"#c9aa60"}}>MIN PROFIL</p><h1>Hej {profile?.name?.split(" ")[0]??"spiller"}</h1><div className="tgt-player-meta"><span>{dguNumber}</span><span>{clubName}</span></div></div></section>
+  <div className="tgt-player-content">{loading&&<div className="status-box">Henter din spillerprofil...</div>}{errorMessage&&<div className="error-box">{errorMessage}</div>}{message&&<div className="status-box">{message}</div>}{!loading&&!profile&&!errorMessage&&<div className="status-box">Spillerprofilen blev ikke fundet i TGT 2027. Kontrollér at spillerens e-mail eller brugernavn matcher login-brugeren.</div>}{!loading&&profile&&<><section className="tgt-player-intro"><div className="tgt-player-avatar">{getInitials(profile.name)}</div><div><h2 style={{margin:"0 0 4px"}}>{profile.name}</h2><span>TGT {profile.tournaments?.season??"–"}</span></div></section><button type="button" className="tgt-player-primary" onClick={()=>onStartScoring(profile.id)}>Start scoreindtastning</button><section className="tgt-player-kpis"><div className="tgt-player-kpi"><span>Sæsonstilling</span><strong>{position?`#${position}`:"–"}</strong></div><div className="tgt-player-kpi"><span>Sæsonscore</span><strong>{seasonScore===null?"–":formatScore(seasonScore)}</strong></div><div className="tgt-player-kpi"><span>Handicap</span><strong>{profile.handicap_index??"–"}</strong>{!editingHcp?<button type="button" className="tgt-hcp-link" onClick={()=>setEditingHcp(true)} aria-label="Redigér handicap" title="Redigér handicap">✎</button>:<div className="tgt-hcp-edit"><input inputMode="decimal" value={hcpDraft} onChange={e=>setHcpDraft(e.target.value)} aria-label="Nyt handicap"/><button className="tgt-hcp-save" onClick={saveHandicap} disabled={savingHcp}>{savingHcp?"Gemmer...":"Gem"}</button><button onClick={()=>{setEditingHcp(false);setHcpDraft(profile.handicap_index??"")}}>Annullér</button></div>}</div><div className="tgt-player-kpi"><span>Resultater</span><strong>{results.length}</strong></div></section><div className="tgt-player-grid"><section className="tgt-player-panel"><p className="eyebrow">Mine resultater</p><h2>Seneste runder</h2>{latest.length===0?<div className="status-box">Resultater registreres automatisk fra kommende runder.</div>:latest.map((r,i)=><div className="tgt-player-result" key={`${r.player_id}-${r.round_number}-${i}`}><span>TGT {r.tournaments?.season??"–"} · Runde {r.round_number}</span><strong>{formatScore(r.score)}</strong></div>)}</section><aside className="tgt-player-panel"><p className="eyebrow">Spillerstatistik</p><h2>Sæson {profile.tournaments?.season??"–"}</h2><div className="tgt-player-stat-grid">{[["Huller",playerStats.holes],["Eagles+",playerStats.eagles],["Birdies",playerStats.birdies],["Pars",playerStats.pars],["Bogeys",playerStats.bogeys],["Double+",playerStats.doublePlus]].map(([label,value])=><div className="tgt-player-stat" key={label}><strong>{value}</strong><small>{label}</small></div>)}</div>{playerStats.holes===0&&<div className="status-box" style={{marginTop:12}}>Statistik vises automatisk, når scorekort er gemt.</div>}</aside></div></>}</div></section><MitTgtBottomNav active="profile" onProfile={()=>onNavigate("profile")} onLeaderboard={()=>onNavigate("leaderboard")} onPlay={()=>profile&&onStartScoring(profile.id)} onLive={()=>onNavigate("live-leaderboard")} onMenu={()=>onNavigate("menu")} playDisabled={!profile} /></main>;
+}
+
+function SeasonPlayersAdmin({ season = ACTIVE_SEASON }) {
   const [players, setPlayers] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
@@ -3368,6 +4002,8 @@ function SeasonPlayersAdmin({ season = 2027 }) {
     name: "",
     email: "",
     handicapIndex: "",
+    dguNumber: "",
+    clubName: "",
     teamCompetition: true,
   });
 
@@ -3385,6 +4021,8 @@ function SeasonPlayersAdmin({ season = 2027 }) {
           name: player.name ?? "",
           email: player.email ?? "",
           handicapIndex: player.handicap_index ?? "",
+          dguNumber: player.dgu_number ?? "",
+          clubName: player.club_name ?? "",
           genderCode: player.gender_code ?? "",
           active: player.active,
           teamCompetition: player.team_competition,
@@ -3437,6 +4075,14 @@ function SeasonPlayersAdmin({ season = 2027 }) {
         teamCompetition: draft.teamCompetition,
         genderCode: draft.genderCode,
       });
+      const { error: profileFieldError } = await supabase
+        .from("players")
+        .update({
+          dgu_number: draft.dguNumber.trim() || null,
+          club_name: draft.clubName.trim() || null,
+        })
+        .eq("id", playerId);
+      if (profileFieldError) throw profileFieldError;
       setMessage(`${savedPlayer.name} er gemt.`);
       await loadPlayers();
     } catch (error) {
@@ -3463,10 +4109,20 @@ function SeasonPlayersAdmin({ season = 2027 }) {
         handicapIndex: newPlayer.handicapIndex,
         teamCompetition: newPlayer.teamCompetition,
       });
+      const { error: profileFieldError } = await supabase
+        .from("players")
+        .update({
+          dgu_number: newPlayer.dguNumber.trim() || null,
+          club_name: newPlayer.clubName.trim() || null,
+        })
+        .eq("id", createdPlayer.id);
+      if (profileFieldError) throw profileFieldError;
       setNewPlayer({
         name: "",
         email: "",
         handicapIndex: "",
+        dguNumber: "",
+        clubName: "",
         teamCompetition: true,
       });
       setMessage(`${createdPlayer.name} er oprettet i TGT ${season}.`);
@@ -3549,7 +4205,7 @@ function SeasonPlayersAdmin({ season = 2027 }) {
                     style={{
                       display: "grid",
                       gridTemplateColumns:
-                        "minmax(180px, 1.3fr) minmax(180px, 1.3fr) minmax(110px, .6fr)",
+                        "repeat(auto-fit, minmax(160px, 1fr))",
                       gap: 10,
                     }}
                   >
@@ -3569,6 +4225,18 @@ function SeasonPlayersAdmin({ season = 2027 }) {
                       }
                       className="form-input"
                       placeholder="E-mail"
+                    />
+                    <input
+                      value={draft.dguNumber}
+                      onChange={(event) => updateDraft(player.id, "dguNumber", event.target.value)}
+                      className="form-input"
+                      placeholder="DGU-nummer"
+                    />
+                    <input
+                      value={draft.clubName}
+                      onChange={(event) => updateDraft(player.id, "clubName", event.target.value)}
+                      className="form-input"
+                      placeholder="Klub"
                     />
                     <input
                       type="number"
@@ -3650,7 +4318,7 @@ function SeasonPlayersAdmin({ season = 2027 }) {
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "minmax(180px, 1.3fr) minmax(180px, 1.3fr) minmax(110px, .6fr)",
+                  "repeat(auto-fit, minmax(160px, 1fr))",
                 gap: 10,
               }}
             >
@@ -3677,6 +4345,18 @@ function SeasonPlayersAdmin({ season = 2027 }) {
                 }
                 className="form-input"
                 placeholder="E-mail, valgfri"
+              />
+              <input
+                value={newPlayer.dguNumber}
+                onChange={(event) => setNewPlayer((current) => ({ ...current, dguNumber: event.target.value }))}
+                className="form-input"
+                placeholder="DGU-nummer"
+              />
+              <input
+                value={newPlayer.clubName}
+                onChange={(event) => setNewPlayer((current) => ({ ...current, clubName: event.target.value }))}
+                className="form-input"
+                placeholder="Klub"
               />
               <input
                 type="number"
@@ -3722,7 +4402,7 @@ function SeasonPlayersAdmin({ season = 2027 }) {
   );
 }
 
-function SeasonTeamsAdmin({ season = 2027 }) {
+function SeasonTeamsAdmin({ season = ACTIVE_SEASON }) {
   const [teams, setTeams] = useState([]);
   const [eligiblePlayers, setEligiblePlayers] = useState([]);
   const [drafts, setDrafts] = useState({});
@@ -4129,7 +4809,7 @@ function SeasonTeamsAdmin({ season = 2027 }) {
   );
 }
 
-function SeasonRoundsAdmin({ season = 2027 }) {
+function SeasonRoundsAdmin({ season = ACTIVE_SEASON }) {
   const emptyRound = {
     roundNumber: "",
     name: "",
@@ -4812,7 +5492,7 @@ function SeasonRoundsAdmin({ season = 2027 }) {
   );
 }
 
-function RoundParticipantsAdmin({ season = 2027 }) {
+function RoundParticipantsAdmin({ season = ACTIVE_SEASON }) {
   const [rounds, setRounds] = useState([]);
   const [selectedRoundId, setSelectedRoundId] = useState("");
   const [selectedRound, setSelectedRound] = useState(null);
@@ -5113,7 +5793,7 @@ function RoundParticipantsAdmin({ season = 2027 }) {
   );
 }
 
-function FlightAdmin({ season = 2027 }) {
+function FlightAdmin({ season = ACTIVE_SEASON }) {
   const [rounds, setRounds] = useState([]);
   const [selectedRoundId, setSelectedRoundId] = useState("");
   const [selectedRound, setSelectedRound] = useState(null);
@@ -6097,11 +6777,14 @@ function AdminClosestToPin({ session, onLogout }) {
   const [flightsCreated, setFlightsCreated] = useState(false);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [adminSeasonTab, setAdminSeasonTab] = useState("2026");
+  const [adminSeasonTab, setAdminSeasonTab] = useState(String(ACTIVE_SEASON));
   const [adminSection, setAdminSection] = useState("overview");
   const [regularSeasonPreview, setRegularSeasonPreview] = useState([]);
   const [regularSeasonArchive, setRegularSeasonArchive] = useState([]);
-  const [finalizingRegularSeason, setFinalizingRegularSeason] = useState(false);
+  const [finalizingIndividualRegularSeason, setFinalizingIndividualRegularSeason] = useState(false);
+  const [teamRegularSeasonArchive, setTeamRegularSeasonArchive] = useState([]);
+  const [regularSeasonTeamPreview, setRegularSeasonTeamPreview] = useState([]);
+  const [finalizingTeamRegularSeason, setFinalizingTeamRegularSeason] = useState(false);
 
   const loadAdminData = useCallback(async () => {
     setLoading(true);
@@ -6232,35 +6915,47 @@ function AdminClosestToPin({ session, onLogout }) {
   }, [adminSeasonTab, adminSection]);
 
   async function loadRegularSeasonFinaleCenter() {
-    const [previewResult, archiveResult] = await Promise.all([
-      supabase
-        .from("season_individual_standings")
-        .select("player_id, player_name, counting_rounds, counting_score, halved_score")
-        .eq("season", Number(adminSeasonTab))
-        .order("halved_score", { ascending: true }),
-      supabase
-        .from("season_regular_standings")
-        .select("player_id, player_name, counting_score, halved_score, finalized_at")
-        .eq("season", Number(adminSeasonTab))
-        .order("position", { ascending: true }),
+    const [previewResult, archiveResult, individualRoundsResult, teamRoundsResult, teamArchiveResult] = await Promise.all([
+      supabase.from("season_individual_standings").select("player_id, player_name, counting_rounds, counting_score, halved_score").eq("season",Number(adminSeasonTab)),
+      supabase.from("season_regular_standings").select("player_id, player_name, counting_score, halved_score, finalized_at").eq("season",Number(adminSeasonTab)).order("position",{ascending:true}),
+      supabase.from("round_results").select("player_id,score,tournaments!inner(season)").eq("tournaments.season",Number(adminSeasonTab)).not("score","is",null),
+      supabase.from("team_round_results").select("team_id,score,tournaments!inner(season)").eq("tournaments.season",Number(adminSeasonTab)).not("score","is",null),
+      supabase.from("season_team_regular_standings").select("team_id,team_name,counting_score,halved_score,finalized_at").eq("season",Number(adminSeasonTab)).order("position",{ascending:true}),
     ]);
-    if (previewResult.error) throw previewResult.error;
-    if (archiveResult.error && archiveResult.error.code !== "42P01") throw archiveResult.error;
-    setRegularSeasonPreview(previewResult.data ?? []);
-    setRegularSeasonArchive(archiveResult.data ?? []);
+    if(previewResult.error)throw previewResult.error;
+    if(archiveResult.error&&archiveResult.error.code!=="42P01")throw archiveResult.error;
+    if(individualRoundsResult.error)throw individualRoundsResult.error;
+    if(teamRoundsResult.error)throw teamRoundsResult.error;
+    if(teamArchiveResult.error&&teamArchiveResult.error.code!=="42P01")throw teamArchiveResult.error;
+    const scoresByPlayer={};
+    (individualRoundsResult.data??[]).forEach((row)=>{(scoresByPlayer[row.player_id]??=[]).push(Number(row.score));});
+    const scoresByTeam={};
+    (teamRoundsResult.data??[]).forEach((row)=>{(scoresByTeam[row.team_id]??=[]).push(Number(row.score));});
+    const teamPreviewRows=Object.entries(scoresByTeam).map(([teamId,scores])=>{
+      const base=getManualFinalBase(scores);
+      return {teamId,roundsPlayed:scores.length,countingScore:base.countingScore,halvedScore:base.halvedScore,eligible:base.eligible};
+    }).sort((a,b)=>Number(a.countingScore??Infinity)-Number(b.countingScore??Infinity));
+    const previewRows=(previewResult.data??[]).map((player)=>{
+      const base=getManualFinalBase(scoresByPlayer[player.player_id]??[]);
+      return {...player,counting_rounds:base.usedScores.length,counting_score:base.countingScore,halved_score:base.halvedScore,used_worst_twice:(scoresByPlayer[player.player_id]??[]).length===3};
+    }).sort((a,b)=>Number(a.counting_score??Infinity)-Number(b.counting_score??Infinity));
+    setRegularSeasonPreview(previewRows);
+    setRegularSeasonArchive(archiveResult.data??[]);
+    setRegularSeasonTeamPreview(teamPreviewRows);
+    setTeamRegularSeasonArchive(teamArchiveResult.data??[]);
   }
 
-  async function handleFinalizeRegularSeason() {
-    const unqualified = regularSeasonPreview.filter((player) => Number(player.counting_rounds) < 4);
+  async function handleFinalizeIndividualRegularSeason() {
+    const unqualified = regularSeasonPreview.filter((player) => Number(player.counting_rounds) < 3);
     if (unqualified.length > 0) {
-      setErrorMessage(`${unqualified.length} spiller(e) mangler fire tællende runder.`);
+      setErrorMessage(`${unqualified.length} spiller(e) mangler mindst tre tællende runder.`);
       return;
     }
     const confirmed = window.confirm(
-      `Vil du afslutte grundspillet i TGT ${adminSeasonTab}? De fire bedste scorer gemmes, og den samlede score halveres som udgangspunkt til finalen.`
+      `${regularSeasonArchive.length>0?"Vil du genberegne":"Vil du halvere"} den individuelle score i TGT ${adminSeasonTab}? De fire bedste scorer bruges, og et tidligere finalegrundlag erstattes.`
     );
     if (!confirmed) return;
-    setFinalizingRegularSeason(true);
+    setFinalizingIndividualRegularSeason(true);
     setMessage("");
     setErrorMessage("");
     try {
@@ -6268,14 +6963,29 @@ function AdminClosestToPin({ session, onLogout }) {
         requested_season: Number(adminSeasonTab),
       });
       if (error) throw error;
-      setMessage(`Grundspillet er afsluttet. ${data ?? regularSeasonPreview.length} spilleres finaleudgangspunkt er gemt.`);
+      setMessage(`Den individuelle finaleudregning er gemt. ${data ?? regularSeasonPreview.length} spilleres finalegrundlag er opdateret.`);
       await loadRegularSeasonFinaleCenter();
     } catch (error) {
       console.error("Fejl ved afslutning af grundspillet:", error);
       setErrorMessage(error.message ?? "Grundspillet kunne ikke afsluttes.");
     } finally {
-      setFinalizingRegularSeason(false);
+      setFinalizingIndividualRegularSeason(false);
     }
+  }
+
+  async function handleFinalizeTeamRegularSeason() {
+    const eligibleTeams=regularSeasonTeamPreview.filter((team)=>Number(team.roundsPlayed)>=3);
+    if(eligibleTeams.length===0){setErrorMessage("Ingen hold har mindst tre gennemførte runder.");return;}
+    const confirmed=window.confirm(`${teamRegularSeasonArchive.length>0?"Vil du genberegne":"Vil du halvere"} holdscorerne i TGT ${adminSeasonTab}? De fire bedste holdrunder tæller, og et tidligere finalegrundlag erstattes. Ved tre runder tæller den dårligste også som fjerde.`);
+    if(!confirmed)return;
+    setFinalizingTeamRegularSeason(true);setMessage("");setErrorMessage("");
+    try{
+      const {data,error}=await supabase.rpc("finalize_team_regular_season",{requested_season:Number(adminSeasonTab)});
+      if(error)throw error;
+      setMessage(`Holdenes finaleudregning er gemt. ${data??eligibleTeams.length} holds finalegrundlag er opdateret.`);
+      await loadRegularSeasonFinaleCenter();
+    }catch(error){console.error("Fejl ved halvering af holdscorer:",error);setErrorMessage(error.message??"Holdscorerne kunne ikke halveres.");}
+    finally{setFinalizingTeamRegularSeason(false);}
   }
 
   async function handleRoundLock(roundData) {
@@ -6444,36 +7154,91 @@ function AdminClosestToPin({ session, onLogout }) {
   }
 
   async function handleCreateSeason2027() {
+    const sourceSeason = ACTIVE_SEASON;
+    const newSeason = ACTIVE_SEASON + 1;
     const confirmed = window.confirm(
-      "Vil du oprette TGT 2027 som kladde og kopiere de aktive spillere og regler fra TGT 2026?"
+      `Vil du oprette TGT ${newSeason} og automatisk kopiere aktive spillere, aktive hold og rundeopsætningen fra TGT ${sourceSeason}? Scores, bolde, deltagere og historiske resultater kopieres ikke.`
     );
-
     if (!confirmed) return;
-
     setCreatingSeason2027(true);
     setMessage("");
     setErrorMessage("");
-
     try {
-      const { data, error } = await supabase.rpc(
-        "create_next_tgt_season",
-        {
-          source_season: 2026,
-          new_season: 2027,
-        }
-      );
-
+      const { data: tournamentId, error } = await supabase.rpc("create_next_tgt_season", {
+        source_season: sourceSeason,
+        new_season: newSeason,
+      });
       if (error) throw error;
 
-      setMessage(
-        `TGT 2027 er oprettet som kladde. Turneringens ID er ${data}.`
-      );
+      const { error: publishSeasonError } = await supabase
+        .from("tournaments")
+        .update({ is_public: true })
+        .eq("season", newSeason);
+      if (publishSeasonError) throw publishSeasonError;
+
+      const [sourcePlayersResult, targetPlayersResult, sourceTeamsResult, targetTeamsResult, sourceRoundsResult, targetRoundsResult] = await Promise.all([
+        getSeasonPlayers(sourceSeason),
+        getSeasonPlayers(newSeason),
+        getSeasonTeams(sourceSeason),
+        getSeasonTeams(newSeason),
+        getSeasonRounds(sourceSeason),
+        getSeasonRounds(newSeason),
+      ]);
+      const sourcePlayers = sourcePlayersResult.players ?? [];
+      const targetPlayers = targetPlayersResult.players ?? [];
+      const targetPlayerByName = new Map(targetPlayers.map((player) => [String(player.name ?? "").trim().toLocaleLowerCase("da"), player]));
+      const sourcePlayerById = new Map(sourcePlayers.map((player) => [String(player.id), player]));
+
+      let copiedTeams = 0;
+      const existingTeamNames = new Set((targetTeamsResult.teams ?? []).map((team) => String(team.name ?? "").trim().toLocaleLowerCase("da")));
+      for (const team of (sourceTeamsResult.teams ?? []).filter((item) => item.active !== false)) {
+        const teamKey = String(team.name ?? "").trim().toLocaleLowerCase("da");
+        if (!teamKey || existingTeamNames.has(teamKey)) continue;
+        const targetMemberIds = (team.members ?? []).map((member) => {
+          const sourcePlayer = sourcePlayerById.get(String(member.playerId));
+          return targetPlayerByName.get(String(sourcePlayer?.name ?? "").trim().toLocaleLowerCase("da"))?.id;
+        }).filter(Boolean);
+        if (targetMemberIds.length !== 2) throw new Error(`Holdet ${team.name} kunne ikke kopieres, fordi begge spillere ikke findes i TGT ${newSeason}.`);
+        await createSeasonTeam({ season: newSeason, name: team.name, playerIds: targetMemberIds });
+        existingTeamNames.add(teamKey);
+        copiedTeams += 1;
+      }
+
+      let copiedRounds = 0;
+      const existingRoundNumbers = new Set((targetRoundsResult.rounds ?? []).map((round) => Number(round.round_number)));
+      for (const round of sourceRoundsResult.rounds ?? []) {
+        if (existingRoundNumbers.has(Number(round.round_number))) continue;
+        let playedAt = round.played_at ?? "";
+        if (playedAt) {
+          const date = new Date(`${playedAt}T12:00:00`);
+          if (!Number.isNaN(date.getTime())) {
+            date.setFullYear(date.getFullYear() + (newSeason - sourceSeason));
+            playedAt = date.toISOString().slice(0, 10);
+          }
+        }
+        const createdRound = await createSeasonRound({
+          season: newSeason,
+          roundNumber: round.round_number,
+          name: round.name,
+          playedAt,
+          courseId: round.course_id ?? "",
+          teeId: round.tee_id ?? "",
+          roundType: round.round_type ?? "regular",
+          individualEnabled: round.individual_enabled,
+          teamEnabled: round.team_enabled,
+          closestToPinEnabled: round.closest_to_pin_enabled,
+        });
+        const { error: liveModeError } = await supabase.from("rounds").update({ live_leaderboard_mode: round.live_leaderboard_mode ?? "none" }).eq("id", createdRound.id);
+        if (liveModeError) throw liveModeError;
+        existingRoundNumbers.add(Number(round.round_number));
+        copiedRounds += 1;
+      }
+
+      setMessage(`TGT ${newSeason} er oprettet automatisk. ${targetPlayers.length} spillere, ${copiedTeams} nye hold og ${copiedRounds} nye runder er klar. Scores, deltagere og bolde er ikke kopieret.`);
       await loadAdminData();
     } catch (error) {
-      console.error("Fejl ved oprettelse af TGT 2027:", error);
-      setErrorMessage(
-        error.message ?? "TGT 2027 kunne ikke oprettes."
-      );
+      console.error("Fejl ved automatisk sæsonoprettelse:", error);
+      setErrorMessage(error.message ?? "Den nye TGT-sæson kunne ikke oprettes automatisk.");
     } finally {
       setCreatingSeason2027(false);
     }
@@ -6622,8 +7387,7 @@ function AdminClosestToPin({ session, onLogout }) {
               }}
             >
               {[
-                ["2026", "TGT 2026"],
-                ["2027", "TGT 2027"],
+                [String(ACTIVE_SEASON), `TGT ${ACTIVE_SEASON}`],
               ].map(([value, label]) => (
                 <button
                   type="button"
@@ -6689,11 +7453,11 @@ function AdminClosestToPin({ session, onLogout }) {
               <>
                 <section style={{ padding: 20, border: "1px solid rgba(199,154,66,.42)", borderRadius: 16, background: "linear-gradient(135deg, #fffaf0, #ffffff)", marginBottom: 24 }}>
                   <p className="eyebrow">Trin 1 · Grundspil</p>
-                  <h2 style={{ marginTop: 0 }}>Afslut grundspillet</h2>
-                  <p className="description">Systemet tager hver spillers fire bedste rundescores, lægger dem sammen og halverer summen. Det halverede resultat gemmes som spillerens udgangspunkt til finalen.</p>
+                  <h2 style={{ marginTop: 0 }}>Manuel halvering</h2>
+                  <p className="description">Der halveres først, når du trykker på knappen. De fire bedste runder tæller. Har en spiller eller et hold kun tre runder, tæller den dårligste af de tre som fjerde runde også.</p>
                   <div className="flight-information" style={{ marginTop: 18 }}>
                     <div><span>Spillere</span><strong>{regularSeasonPreview.length}</strong></div>
-                    <div><span>Klar med 4 runder</span><strong>{regularSeasonPreview.filter((player) => Number(player.counting_rounds) === 4).length}</strong></div>
+                    <div><span>Princip</span><strong>4 bedste runder tæller</strong></div>
                     <div><span>Status</span><strong>{regularSeasonArchive.length > 0 ? "Afsluttet" : "Åben"}</strong></div>
                     <div><span>Finalegrundlag</span><strong>{regularSeasonArchive.length > 0 ? `${regularSeasonArchive.length} gemt` : "Ikke gemt"}</strong></div>
                   </div>
@@ -6706,15 +7470,23 @@ function AdminClosestToPin({ session, onLogout }) {
                             <td>{index + 1}</td><td><span className="player-name">{player.player_name}</span></td>
                             <td className="number-column">{formatScore(player.counting_score)}</td>
                             <td className="number-column final-score">{formatScore(player.halved_score)}</td>
-                            <td>{regularSeasonArchive.length > 0 ? "Gemt" : Number(player.counting_rounds) === 4 ? "Klar" : `${player.counting_rounds ?? 0}/4`}</td>
+                            <td>{regularSeasonArchive.length > 0 ? "Gemt" : "4 bedste runder tæller"}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <button type="button" onClick={handleFinalizeRegularSeason} disabled={finalizingRegularSeason || regularSeasonArchive.length > 0 || regularSeasonPreview.length === 0 || regularSeasonPreview.some((player) => Number(player.counting_rounds) < 4)} className="login-submit-button" style={{ maxWidth: 420, marginTop: 18 }}>
-                    {finalizingRegularSeason ? "Afslutter grundspillet..." : regularSeasonArchive.length > 0 ? "Grundspillet er afsluttet" : "Afslut grundspillet og gem finaleudgangspunkt"}
+                  <button type="button" onClick={handleFinalizeIndividualRegularSeason} disabled={finalizingIndividualRegularSeason || regularSeasonPreview.length === 0 || regularSeasonPreview.some((player) => Number(player.counting_rounds) < 3)} className="login-submit-button" style={{ maxWidth: 420, marginTop: 18 }}>
+                    {finalizingIndividualRegularSeason ? "Beregner individuel score..." : regularSeasonArchive.length > 0 ? "Genberegn individuel score" : "Halver individuel score"}
                   </button>
+                </section>
+
+                <section style={{ padding:20,border:"1px solid rgba(199,154,66,.42)",borderRadius:16,background:"#fffdf8",marginBottom:24 }}>
+                  <p className="eyebrow">Holdturnering · TGT {adminSeasonTab}</p>
+                  <h2 style={{marginTop:0}}>Manuel halvering af holdscore</h2>
+                  <p className="description">Holdscoren halveres kun, når du trykker her. De fire bedste holdrunder tæller. Har et hold kun tre runder, tæller holdets dårligste runde også som den fjerde.</p>
+                  <div className="flight-information" style={{marginTop:16}}><div><span>Hold klar</span><strong>{regularSeasonTeamPreview.filter((team)=>Number(team.roundsPlayed)>=3).length}</strong></div><div><span>Status</span><strong>{teamRegularSeasonArchive.length>0?"Halveret":"Ikke halveret"}</strong></div></div>
+                  <button type="button" onClick={handleFinalizeTeamRegularSeason} disabled={finalizingTeamRegularSeason||regularSeasonTeamPreview.length===0||regularSeasonTeamPreview.every((team)=>Number(team.roundsPlayed)<3)} className="login-submit-button" style={{maxWidth:420,marginTop:18}}>{finalizingTeamRegularSeason?"Beregner holdscore...":teamRegularSeasonArchive.length>0?"Genberegn holdscore":"Halver holdscore"}</button>
                 </section>
 
                 {adminSeasonTab === "2027" && (
@@ -7117,34 +7889,32 @@ function AdminClosestToPin({ session, onLogout }) {
             >
               <p className="eyebrow">Ny sæson</p>
               <h2 style={{ marginTop: 0 }}>
-                {adminSeasonTab === "2026" ? "TGT 2026 administration" : season2027 ? "TGT 2027 er oprettet" : "Opret TGT 2027"}
+                {season2027 ? `TGT ${ACTIVE_SEASON} er klar` : `TGT ${ACTIVE_SEASON} mangler`}
               </h2>
 
-              {adminSeasonTab === "2026" || season2027 ? (
+              {season2027 ? (
                 <div className="flight-information" style={{ marginTop: 18 }}>
                   <div>
                     <span>Status</span>
-                    <strong>{adminSeasonTab === "2026" ? "Aktiv" : season2027.status}</strong>
+                    <strong>{season2027.status}</strong>
                   </div>
                   <div>
                     <span>Offentlig</span>
-                    <strong>{adminSeasonTab === "2026" ? "Ja" : season2027.is_public ? "Ja" : "Nej"}</strong>
+                    <strong>{season2027.is_public ? "Ja" : "Nej"}</strong>
                   </div>
                   <div>
                     <span>Aktive spillere</span>
-                    <strong>{adminSeasonTab === "2026" ? "15" : season2027PlayerCount}</strong>
+                    <strong>{season2027PlayerCount}</strong>
                   </div>
                   <div>
                     <span>Opsætning</span>
-                    <strong>{adminSeasonTab === "2026" ? "Finaleklar" : "Kladde"}</strong>
+                    <strong>{season2027.is_public ? "Klar" : "Kladde"}</strong>
                   </div>
                 </div>
               ) : (
                 <>
                   <p className="description">
-                    Opretter TGT 2027 som en privat kladde, kopierer reglerne
-                    og alle aktive spillere fra 2026. Hold, runder, datoer,
-                    bolde, scores og historiske resultater kopieres ikke.
+                    Opretter næste TGT-sæson og kopierer automatisk aktive spillere, aktive hold og rundeopsætningen. Rundedatoerne flyttes ét år. Bolde, deltagere, scores og historiske resultater kopieres ikke.
                   </p>
 
                   <button
@@ -7155,8 +7925,8 @@ function AdminClosestToPin({ session, onLogout }) {
                     style={{ maxWidth: 420 }}
                   >
                     {creatingSeason2027
-                      ? "Opretter TGT 2027..."
-                      : "Opret TGT 2027"}
+                      ? `Opretter TGT ${ACTIVE_SEASON + 1}...`
+                      : `Opret TGT ${ACTIVE_SEASON + 1}`}
                   </button>
                 </>
               )}
@@ -7289,6 +8059,8 @@ function AdminClosestToPin({ session, onLogout }) {
 function MarkerDashboard({
   session,
   onLogout,
+  playerId = null,
+  onBackToPlayer = null,
 }) {
   const [assignment, setAssignment] = useState(null);
   const [availableAssignments, setAvailableAssignments] = useState([]);
@@ -7345,7 +8117,7 @@ function MarkerDashboard({
     setMarkerLiveLoading(true);
     setMarkerLiveError("");
     try {
-      const season = Number(assignment.rounds?.tournaments?.season ?? 2026);
+      const season = Number(assignment.rounds?.tournaments?.season ?? ACTIVE_SEASON);
       const mode = assignment.rounds?.live_leaderboard_mode ?? "none";
       let effectiveMarkerTee = markerTee;
       if (!effectiveMarkerTee && assignment.rounds?.tee_id) {
@@ -7561,39 +8333,73 @@ function MarkerDashboard({
       setLoading(true);
       setAssignmentError("");
 
-      const {
-        data: markerRows,
-        error: markerError,
-      } = await supabase
-        .from("flight_markers")
-        .select(`
-          flight_id,
-          active,
-          flights (
-            id,
-            name,
-            flight_number,
-            tee_time,
-            status,
-            round_id,
-            rounds (
+      let markerRows;
+      let markerError;
+      if (playerId) {
+        const response = await supabase
+          .from("flight_players")
+          .select(`
+            flight_id,
+            flights (
               id,
-              tournament_id,
-              tournaments ( season ),
-              round_number,
               name,
-              played_at,
-              course_id,
-              tee_id,
-              tee_name,
-              live_leaderboard_mode,
-              locked_at,
-              locked_by
+              flight_number,
+              tee_time,
+              status,
+              round_id,
+              rounds (
+                id,
+                tournament_id,
+                tournaments ( season ),
+                round_number,
+                name,
+                played_at,
+                course_id,
+                tee_id,
+                tee_name,
+                live_leaderboard_mode,
+                locked_at,
+                locked_by
+              )
             )
-          )
-        `)
-        .eq("user_id", session.user.id)
-        .eq("active", true);
+          `)
+          .eq("player_id", playerId);
+        markerRows = response.data;
+        markerError = response.error;
+      } else {
+        const response = await supabase
+          .from("flight_markers")
+          .select(`
+            flight_id,
+            active,
+            flights (
+              id,
+              name,
+              flight_number,
+              tee_time,
+              status,
+              round_id,
+              rounds (
+                id,
+                tournament_id,
+                tournaments ( season ),
+                round_number,
+                name,
+                played_at,
+                course_id,
+                tee_id,
+                tee_name,
+                live_leaderboard_mode,
+                locked_at,
+                locked_by
+              )
+            )
+          `)
+          .eq("user_id", session.user.id)
+          .eq("active", true);
+        markerRows = response.data;
+        markerError = response.error;
+      }
 
       if (markerError) {
         console.error(
@@ -7619,7 +8425,9 @@ function MarkerDashboard({
 
       if (assignments.length === 0) {
         setAssignmentError(
-          "Dette login er ikke knyttet til en aktiv bold."
+          playerId
+            ? "Du er ikke placeret i en bold på en tilgængelig runde."
+            : "Dette login er ikke knyttet til en aktiv bold."
         );
         setLoading(false);
         return;
@@ -7770,7 +8578,7 @@ function MarkerDashboard({
     }
 
     loadMarkerFlight();
-  }, [session.user.id, selectedRoundNumber]);
+  }, [session.user.id, selectedRoundNumber, playerId]);
 
   function handleSelectRound(roundNumber) {
     setAssignment(null);
@@ -8130,6 +8938,9 @@ function MarkerDashboard({
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {playerId && onBackToPlayer && (
+              <button type="button" onClick={onBackToPlayer} className="logout-button">Mit TGT</button>
+            )}
             {assignment && availableAssignments.length > 1 && (
               <button
                 type="button"
@@ -8811,7 +9622,12 @@ export default function App() {
   ] = useState(true);
 
   const [showLogin, setShowLogin] =
-    useState(false);
+    useState(null);
+  const [showPublicWhileLoggedIn, setShowPublicWhileLoggedIn] = useState(false);
+  const [playerScoringId, setPlayerScoringId] = useState(null);
+  const [playerPortalView, setPlayerPortalView] = useState("profile");
+  const [playerProfileId, setPlayerProfileId] = useState(null);
+  const [playerMenuRequested, setPlayerMenuRequested] = useState(false);
 
   useEffect(() => {
     async function getInitialSession() {
@@ -8842,7 +9658,12 @@ export default function App() {
     await supabase.auth.signOut();
 
     setSession(null);
-    setShowLogin(false);
+    setShowLogin(null);
+    setShowPublicWhileLoggedIn(false);
+    setPlayerScoringId(null);
+    setPlayerPortalView("profile");
+    setPlayerProfileId(null);
+    setPlayerMenuRequested(false);
   }
 
   if (checkingSession) {
@@ -8869,33 +9690,17 @@ export default function App() {
       );
     }
 
-    return (
-      <MarkerDashboard
-        session={session}
-        onLogout={handleLogout}
-      />
-    );
+    const handlePortalNavigate = (view) => {
+      if (view === "play") { if (playerProfileId) setPlayerScoringId(playerProfileId); else setPlayerPortalView("profile"); return; }
+      if (view === "menu") { setPlayerMenuRequested(false); setPlayerPortalView((current)=>current === "menu" ? "profile" : "menu"); return; }
+      if (view === "public") { setPlayerPortalView("leaderboard"); return; }
+      setPlayerMenuRequested(false); setPlayerPortalView(view);
+    };
+    if (playerScoringId) return <MarkerDashboard session={session} playerId={playerScoringId} onBackToPlayer={()=>{setPlayerScoringId(null);setPlayerPortalView("profile");setPlayerMenuRequested(false)}} onLogout={handleLogout}/>;
+    if (playerPortalView === "menu") return <MitTgtMenuPage onNavigate={handlePortalNavigate} onLogout={handleLogout}/>;
+    if (["live-leaderboard","leaderboard","team","rounds","profiles","closest","hall"].includes(playerPortalView)) return <Leaderboard key={`mit-tgt-${playerPortalView}`} initialPortalView={playerPortalView} onPortalNavigate={handlePortalNavigate} onOpenPlayerLogin={()=>handlePortalNavigate("profile")} isAuthenticated={true}/>;
+    return <PlayerDashboard session={session} onLogout={handleLogout} onStartScoring={(id)=>setPlayerScoringId(id)} onNavigate={handlePortalNavigate} initialMenuOpen={playerMenuRequested} onProfileResolved={setPlayerProfileId}/>;
   }
-
-  if (showLogin) {
-    return (
-      <MarkerLogin
-        onCancel={() =>
-          setShowLogin(false)
-        }
-        onLoginSuccess={(newSession) => {
-          setSession(newSession);
-          setShowLogin(false);
-        }}
-      />
-    );
-  }
-
-  return (
-    <Leaderboard
-      onOpenLogin={() =>
-        setShowLogin(true)
-      }
-    />
-  );
+  if (showLogin === "player") return <PlayerLogin onCancel={()=>setShowLogin(null)} onLoginSuccess={(newSession)=>{setSession(newSession);setShowLogin(null);setPlayerPortalView("profile");setPlayerScoringId(null);setPlayerMenuRequested(false)}}/>;
+  return <Leaderboard onOpenPlayerLogin={()=>setShowLogin("player")}/>;
 }

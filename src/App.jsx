@@ -730,6 +730,14 @@ function ClosestToPinHoleSelector({ roundId, courseId, disabled = false }) {
     </section>
   );
 }
+function TgtTeeLogo({ compact = false }) {
+  return <span className={`tgt-tee-logo${compact ? " is-compact" : ""}`} aria-label="The Golden Tee Tour">
+    <span className="tgt-tee-ball" />
+    <span className="tgt-golden-tee" />
+    <strong>TGT</strong>
+  </span>;
+}
+
 function MitTgtBottomNav({ active = "profile", onProfile, onLeaderboard, onPlay, onLive, onMenu, playDisabled = false }) {
   const items = [
     { key: "profile", label: "Profil", action: onProfile, icon: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c.5-4.1 2.7-6.2 6.5-6.2s6 2.1 6.5 6.2"/></svg> },
@@ -2559,12 +2567,23 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         .tgt-public-topbar .tgt-wordmark{flex:1;justify-content:center;min-width:0}.tgt-player-appbar{display:grid!important;grid-template-columns:72px 1fr 42px!important}.tgt-player-appbar .tgt-player-brand{justify-self:center}
         .tgt-menu-page-head{position:relative}.tgt-menu-page-head>.tgt-app-back{position:absolute;left:12px;top:12px}.tgt-menu-page-head>div{text-align:center}
         @media(max-width:500px){.tgt-app-back span{display:none}.tgt-app-back{min-width:42px;width:42px}.tgt-player-appbar{grid-template-columns:42px 1fr 42px!important}}
+
+        /* Animated Golden Tee brand */
+        .tgt-tee-logo{position:relative;width:58px;height:66px;display:inline-block;flex:0 0 auto;color:#fff;overflow:visible}
+        .tgt-tee-logo strong{position:absolute;left:50%;bottom:0;transform:translateX(-50%);color:#fff!important;font:1000 13px/1 Arial,sans-serif;letter-spacing:.12em;white-space:nowrap}
+        .tgt-tee-ball{position:absolute;left:50%;top:0;width:16px;height:16px;transform:translateX(-50%);border-radius:50%;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,.22);animation:tgtBallDrop .85s cubic-bezier(.2,.8,.25,1) both}
+        .tgt-golden-tee{position:absolute;left:50%;top:17px;width:28px;height:34px;transform:translateX(-50%);background:linear-gradient(135deg,#fff0ae,#d7ad4f 50%,#9b671d);clip-path:polygon(0 0,100% 0,64% 25%,57% 82%,50% 100%,43% 82%,36% 25%);transform-origin:50% 100%;animation:tgtTeeRise .7s ease-out both}
+        .tgt-tee-logo.is-compact{width:48px;height:52px}.tgt-tee-logo.is-compact .tgt-tee-ball{width:12px;height:12px}.tgt-tee-logo.is-compact .tgt-golden-tee{top:12px;width:22px;height:27px}.tgt-tee-logo.is-compact strong{font-size:10px}
+        @keyframes tgtBallDrop{0%{opacity:0;transform:translate(-50%,-15px) scale(.7)}70%{opacity:1;transform:translate(-50%,2px) scale(1.05)}100%{transform:translate(-50%,0) scale(1)}}
+        @keyframes tgtTeeRise{0%{opacity:0;transform:translate(-50%,10px) scaleY(.55)}100%{opacity:1;transform:translate(-50%,0) scaleY(1)}}
+        @media(prefers-reduced-motion:reduce){.tgt-tee-ball,.tgt-golden-tee{animation:none!important}}
+        .login-icon:has(.tgt-tee-logo){width:82px!important;height:88px!important;background:transparent!important;overflow:visible!important}
 `}</style>
 
       <header className="tgt-public-topbar">
         {isAuthenticated && <button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onPortalNavigate?.("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>}
         <div className="tgt-wordmark">
-          <span className="tgt-wordmark-mark">TGT</span>
+          <TgtTeeLogo compact />
           <span>
             THE GOLDEN TEE TOUR
             <small style={{ display: "block", opacity: .62, fontSize: 9, marginTop: 2 }}>
@@ -3652,7 +3671,18 @@ function PlayerLogin({ onCancel, onLoginSuccess }) {
         .tgt-public-shell:not(.tgt-hall-fullscreen) .tgt-kicker{border-color:rgba(255,255,255,.38)!important;color:#fff!important}
         .tgt-public-shell:not(.tgt-hall-fullscreen) .tgt-primary-action{border-color:#fff!important;color:#fff!important;background:#168454!important}
         .tgt-fixed-bottom-nav{border-color:rgba(255,255,255,.20)!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item{color:rgba(238,250,242,.72)!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#fff!important;background:rgba(255,255,255,.14)!important}.tgt-fixed-play-disc{border-color:#fff!important;color:#fff!important;background:linear-gradient(145deg,#ef5a61,#c9323a)!important}
-`}</style><section className="login-card"><div className="login-icon">⛳</div><p className="eyebrow">MIT TGT</p><h1>Mit TGT-login</h1><p className="description">Log ind på din personlige TGT-side.</p><form onSubmit={handleLogin}><label className="form-label">Brugernavn eller e-mail</label><input type="text" value={username} onChange={(event)=>setUsername(event.target.value)} placeholder="Brugernavn eller e-mail" autoComplete="username" required className="form-input"/><label className="form-label">Kodeord</label><input type="password" value={password} onChange={(event)=>setPassword(event.target.value)} placeholder="Indtast kodeord" autoComplete="current-password" required className="form-input"/>{loginError&&<div className="error-box">{loginError}</div>}<button type="submit" disabled={loggingIn} className="login-submit-button">{loggingIn?"Logger ind...":"Log ind"}</button><button type="button" onClick={onCancel} className="login-cancel-button">Tilbage til den offentlige side</button></form></section></main>;
+
+        /* Animated Golden Tee brand */
+        .tgt-tee-logo{position:relative;width:58px;height:66px;display:inline-block;flex:0 0 auto;color:#fff;overflow:visible}
+        .tgt-tee-logo strong{position:absolute;left:50%;bottom:0;transform:translateX(-50%);color:#fff!important;font:1000 13px/1 Arial,sans-serif;letter-spacing:.12em;white-space:nowrap}
+        .tgt-tee-ball{position:absolute;left:50%;top:0;width:16px;height:16px;transform:translateX(-50%);border-radius:50%;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,.22);animation:tgtBallDrop .85s cubic-bezier(.2,.8,.25,1) both}
+        .tgt-golden-tee{position:absolute;left:50%;top:17px;width:28px;height:34px;transform:translateX(-50%);background:linear-gradient(135deg,#fff0ae,#d7ad4f 50%,#9b671d);clip-path:polygon(0 0,100% 0,64% 25%,57% 82%,50% 100%,43% 82%,36% 25%);transform-origin:50% 100%;animation:tgtTeeRise .7s ease-out both}
+        .tgt-tee-logo.is-compact{width:48px;height:52px}.tgt-tee-logo.is-compact .tgt-tee-ball{width:12px;height:12px}.tgt-tee-logo.is-compact .tgt-golden-tee{top:12px;width:22px;height:27px}.tgt-tee-logo.is-compact strong{font-size:10px}
+        @keyframes tgtBallDrop{0%{opacity:0;transform:translate(-50%,-15px) scale(.7)}70%{opacity:1;transform:translate(-50%,2px) scale(1.05)}100%{transform:translate(-50%,0) scale(1)}}
+        @keyframes tgtTeeRise{0%{opacity:0;transform:translate(-50%,10px) scaleY(.55)}100%{opacity:1;transform:translate(-50%,0) scaleY(1)}}
+        @media(prefers-reduced-motion:reduce){.tgt-tee-ball,.tgt-golden-tee{animation:none!important}}
+        .login-icon:has(.tgt-tee-logo){width:82px!important;height:88px!important;background:transparent!important;overflow:visible!important}
+`}</style><section className="login-card"><div className="login-icon"><TgtTeeLogo /></div><p className="eyebrow">MIT TGT</p><h1>Mit TGT-login</h1><p className="description">Log ind på din personlige TGT-side.</p><form onSubmit={handleLogin}><label className="form-label">Brugernavn eller e-mail</label><input type="text" value={username} onChange={(event)=>setUsername(event.target.value)} placeholder="Brugernavn eller e-mail" autoComplete="username" required className="form-input"/><label className="form-label">Kodeord</label><input type="password" value={password} onChange={(event)=>setPassword(event.target.value)} placeholder="Indtast kodeord" autoComplete="current-password" required className="form-input"/>{loginError&&<div className="error-box">{loginError}</div>}<button type="submit" disabled={loggingIn} className="login-submit-button">{loggingIn?"Logger ind...":"Log ind"}</button><button type="button" onClick={onCancel} className="login-cancel-button">Tilbage til den offentlige side</button></form></section></main>;
 }
 function MitTgtMenuPage({ onNavigate, onLogout }) {
   const menuItems = [
@@ -4105,10 +4135,21 @@ function PlayerDashboard({ session, onLogout, onStartScoring, onNavigate, initia
         .tgt-public-topbar .tgt-wordmark{flex:1;justify-content:center;min-width:0}.tgt-player-appbar{display:grid!important;grid-template-columns:72px 1fr 42px!important}.tgt-player-appbar .tgt-player-brand{justify-self:center}
         .tgt-menu-page-head{position:relative}.tgt-menu-page-head>.tgt-app-back{position:absolute;left:12px;top:12px}.tgt-menu-page-head>div{text-align:center}
         @media(max-width:500px){.tgt-app-back span{display:none}.tgt-app-back{min-width:42px;width:42px}.tgt-player-appbar{grid-template-columns:42px 1fr 42px!important}}
+
+        /* Animated Golden Tee brand */
+        .tgt-tee-logo{position:relative;width:58px;height:66px;display:inline-block;flex:0 0 auto;color:#fff;overflow:visible}
+        .tgt-tee-logo strong{position:absolute;left:50%;bottom:0;transform:translateX(-50%);color:#fff!important;font:1000 13px/1 Arial,sans-serif;letter-spacing:.12em;white-space:nowrap}
+        .tgt-tee-ball{position:absolute;left:50%;top:0;width:16px;height:16px;transform:translateX(-50%);border-radius:50%;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,.22);animation:tgtBallDrop .85s cubic-bezier(.2,.8,.25,1) both}
+        .tgt-golden-tee{position:absolute;left:50%;top:17px;width:28px;height:34px;transform:translateX(-50%);background:linear-gradient(135deg,#fff0ae,#d7ad4f 50%,#9b671d);clip-path:polygon(0 0,100% 0,64% 25%,57% 82%,50% 100%,43% 82%,36% 25%);transform-origin:50% 100%;animation:tgtTeeRise .7s ease-out both}
+        .tgt-tee-logo.is-compact{width:48px;height:52px}.tgt-tee-logo.is-compact .tgt-tee-ball{width:12px;height:12px}.tgt-tee-logo.is-compact .tgt-golden-tee{top:12px;width:22px;height:27px}.tgt-tee-logo.is-compact strong{font-size:10px}
+        @keyframes tgtBallDrop{0%{opacity:0;transform:translate(-50%,-15px) scale(.7)}70%{opacity:1;transform:translate(-50%,2px) scale(1.05)}100%{transform:translate(-50%,0) scale(1)}}
+        @keyframes tgtTeeRise{0%{opacity:0;transform:translate(-50%,10px) scaleY(.55)}100%{opacity:1;transform:translate(-50%,0) scaleY(1)}}
+        @media(prefers-reduced-motion:reduce){.tgt-tee-ball,.tgt-golden-tee{animation:none!important}}
+        .login-icon:has(.tgt-tee-logo){width:82px!important;height:88px!important;background:transparent!important;overflow:visible!important}
 `}</style><section className="tgt-player-home">
   <header className="tgt-player-appbar">
     <button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>
-    <div className="tgt-player-brand"><span className="tgt-player-brandmark">TGT</span><span><strong>MIT TGT</strong><small>THE GOLDEN TEE TOUR</small></span></div>
+    <div className="tgt-player-brand"><TgtTeeLogo compact /><span><strong>MIT TGT</strong><small>THE GOLDEN TEE TOUR</small></span></div>
     <button type="button" className="tgt-app-burger" aria-label="Åbn menu" onClick={()=>onNavigate("menu")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   </header>
   <section className="tgt-player-head"><div><p className="eyebrow" style={{color:"#dff0e5"}}>MIN PROFIL</p><h1>Hej {profile?.name?.split(" ")[0]??"spiller"}</h1><div className="tgt-player-meta"><span>{dguNumber}</span><span>{clubName}</span></div></div></section>

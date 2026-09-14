@@ -2513,6 +2513,17 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         .tgt-public-topbar .tgt-wordmark>span:last-child{color:#fff!important}
         .tgt-public-topbar .tgt-wordmark small{color:rgba(255,255,255,.72)!important}
         .tgt-mit-tgt-universe .leaderboard-card>.card-header .description{display:none!important}
+
+        /* Final header spacing before release */
+        .tgt-mit-tgt-universe .tgt-public-topbar{border-bottom:0!important}
+        .tgt-mit-tgt-universe .tgt-tabs{margin-top:16px!important;padding-top:6px!important;padding-left:14px!important;padding-right:14px!important}
+        .tgt-mit-tgt-universe .tgt-tabs + .tgt-tabs,.tgt-mit-tgt-universe .tgt-tabs + [class*="tabs"]{margin-top:10px!important}
+        .tgt-mit-tgt-universe .tgt-public-topbar:after{font-size:11px!important;letter-spacing:.17em!important}
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe .tgt-tabs{margin-top:14px!important;padding-top:5px!important;padding-left:10px!important;padding-right:10px!important}
+          .tgt-mit-tgt-universe .tgt-tabs + .tgt-tabs,.tgt-mit-tgt-universe .tgt-tabs + [class*="tabs"]{margin-top:9px!important}
+          .tgt-mit-tgt-universe .tgt-public-topbar:after{font-size:9px!important}
+        }
 `}</style>
 
       <header className="tgt-public-topbar">

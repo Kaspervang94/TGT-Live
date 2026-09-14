@@ -2551,9 +2551,18 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         .tgt-public-shell:not(.tgt-hall-fullscreen) .tgt-kicker{border-color:rgba(255,255,255,.38)!important;color:#fff!important}
         .tgt-public-shell:not(.tgt-hall-fullscreen) .tgt-primary-action{border-color:#fff!important;color:#fff!important;background:#168454!important}
         .tgt-fixed-bottom-nav{border-color:rgba(255,255,255,.20)!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item{color:rgba(238,250,242,.72)!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#fff!important;background:rgba(255,255,255,.14)!important}.tgt-fixed-play-disc{border-color:#fff!important;color:#fff!important;background:linear-gradient(145deg,#ef5a61,#c9323a)!important}
+
+        /* Previous-page control and corner menu */
+        .tgt-app-back,.tgt-app-burger{appearance:none;-webkit-appearance:none;display:inline-flex!important;align-items:center;justify-content:center;margin:0;padding:0;border:0!important;color:#fff!important;background:transparent!important;box-shadow:none!important;cursor:pointer}
+        .tgt-app-back{gap:5px;min-width:68px;height:42px;font-size:11px;font-weight:900}.tgt-app-back svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+        .tgt-app-burger{width:42px;height:42px;min-width:42px;border-radius:0!important}.tgt-app-burger svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+        .tgt-public-topbar .tgt-wordmark{flex:1;justify-content:center;min-width:0}.tgt-player-appbar{display:grid!important;grid-template-columns:72px 1fr 42px!important}.tgt-player-appbar .tgt-player-brand{justify-self:center}
+        .tgt-menu-page-head{position:relative}.tgt-menu-page-head>.tgt-app-back{position:absolute;left:12px;top:12px}.tgt-menu-page-head>div{text-align:center}
+        @media(max-width:500px){.tgt-app-back span{display:none}.tgt-app-back{min-width:42px;width:42px}.tgt-player-appbar{grid-template-columns:42px 1fr 42px!important}}
 `}</style>
 
       <header className="tgt-public-topbar">
+        {isAuthenticated && <button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onPortalNavigate?.("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>}
         <div className="tgt-wordmark">
           <span className="tgt-wordmark-mark">TGT</span>
           <span>
@@ -2600,6 +2609,7 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
           ☰
         </button>}
         </div>
+        {isAuthenticated && <button type="button" className="tgt-app-burger" aria-label="Åbn menu" onClick={()=>onPortalNavigate?.("menu")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>}
       </header>
 
       {!isAuthenticated && menuOpen && (
@@ -3672,7 +3682,7 @@ function MitTgtMenuPage({ onNavigate, onLogout }) {
   };
   return <main className="tgt-menu-page">
     <section className="tgt-menu-page-shell">
-      <header className="tgt-menu-page-head"><div><p>MIT TGT</p><h1>Menu</h1><span>Vælg hvor du vil hen</span></div></header>
+      <header className="tgt-menu-page-head"><button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button><div><p>MIT TGT</p><h1>Menu</h1><span>Vælg hvor du vil hen</span></div></header>
       <div className="tgt-menu-page-grid">
         {menuItems.map((item)=><button type="button" key={item.view} onClick={()=>onNavigate(item.view)}><span className="tgt-menu-page-icon"><svg viewBox="0 0 24 24" aria-hidden="true">{icon(item.icon)}</svg></span><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><b aria-hidden="true">›</b></button>)}
       </div>
@@ -3742,6 +3752,14 @@ function MitTgtMenuPage({ onNavigate, onLogout }) {
         .tgt-public-shell:not(.tgt-hall-fullscreen) .tgt-kicker{border-color:rgba(255,255,255,.38)!important;color:#fff!important}
         .tgt-public-shell:not(.tgt-hall-fullscreen) .tgt-primary-action{border-color:#fff!important;color:#fff!important;background:#168454!important}
         .tgt-fixed-bottom-nav{border-color:rgba(255,255,255,.20)!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item{color:rgba(238,250,242,.72)!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#fff!important;background:rgba(255,255,255,.14)!important}.tgt-fixed-play-disc{border-color:#fff!important;color:#fff!important;background:linear-gradient(145deg,#ef5a61,#c9323a)!important}
+
+        /* Previous-page control and corner menu */
+        .tgt-app-back,.tgt-app-burger{appearance:none;-webkit-appearance:none;display:inline-flex!important;align-items:center;justify-content:center;margin:0;padding:0;border:0!important;color:#fff!important;background:transparent!important;box-shadow:none!important;cursor:pointer}
+        .tgt-app-back{gap:5px;min-width:68px;height:42px;font-size:11px;font-weight:900}.tgt-app-back svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+        .tgt-app-burger{width:42px;height:42px;min-width:42px;border-radius:0!important}.tgt-app-burger svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+        .tgt-public-topbar .tgt-wordmark{flex:1;justify-content:center;min-width:0}.tgt-player-appbar{display:grid!important;grid-template-columns:72px 1fr 42px!important}.tgt-player-appbar .tgt-player-brand{justify-self:center}
+        .tgt-menu-page-head{position:relative}.tgt-menu-page-head>.tgt-app-back{position:absolute;left:12px;top:12px}.tgt-menu-page-head>div{text-align:center}
+        @media(max-width:500px){.tgt-app-back span{display:none}.tgt-app-back{min-width:42px;width:42px}.tgt-player-appbar{grid-template-columns:42px 1fr 42px!important}}
 `}</style>
   </main>;
 }
@@ -4079,10 +4097,19 @@ function PlayerDashboard({ session, onLogout, onStartScoring, onNavigate, initia
         .tgt-public-shell:not(.tgt-hall-fullscreen) .tgt-kicker{border-color:rgba(255,255,255,.38)!important;color:#fff!important}
         .tgt-public-shell:not(.tgt-hall-fullscreen) .tgt-primary-action{border-color:#fff!important;color:#fff!important;background:#168454!important}
         .tgt-fixed-bottom-nav{border-color:rgba(255,255,255,.20)!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item{color:rgba(238,250,242,.72)!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#fff!important;background:rgba(255,255,255,.14)!important}.tgt-fixed-play-disc{border-color:#fff!important;color:#fff!important;background:linear-gradient(145deg,#ef5a61,#c9323a)!important}
+
+        /* Previous-page control and corner menu */
+        .tgt-app-back,.tgt-app-burger{appearance:none;-webkit-appearance:none;display:inline-flex!important;align-items:center;justify-content:center;margin:0;padding:0;border:0!important;color:#fff!important;background:transparent!important;box-shadow:none!important;cursor:pointer}
+        .tgt-app-back{gap:5px;min-width:68px;height:42px;font-size:11px;font-weight:900}.tgt-app-back svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+        .tgt-app-burger{width:42px;height:42px;min-width:42px;border-radius:0!important}.tgt-app-burger svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+        .tgt-public-topbar .tgt-wordmark{flex:1;justify-content:center;min-width:0}.tgt-player-appbar{display:grid!important;grid-template-columns:72px 1fr 42px!important}.tgt-player-appbar .tgt-player-brand{justify-self:center}
+        .tgt-menu-page-head{position:relative}.tgt-menu-page-head>.tgt-app-back{position:absolute;left:12px;top:12px}.tgt-menu-page-head>div{text-align:center}
+        @media(max-width:500px){.tgt-app-back span{display:none}.tgt-app-back{min-width:42px;width:42px}.tgt-player-appbar{grid-template-columns:42px 1fr 42px!important}}
 `}</style><section className="tgt-player-home">
   <header className="tgt-player-appbar">
+    <button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>
     <div className="tgt-player-brand"><span className="tgt-player-brandmark">TGT</span><span><strong>MIT TGT</strong><small>THE GOLDEN TEE TOUR</small></span></div>
-
+    <button type="button" className="tgt-app-burger" aria-label="Åbn menu" onClick={()=>onNavigate("menu")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   </header>
   <section className="tgt-player-head"><div><p className="eyebrow" style={{color:"#dff0e5"}}>MIN PROFIL</p><h1>Hej {profile?.name?.split(" ")[0]??"spiller"}</h1><div className="tgt-player-meta"><span>{dguNumber}</span><span>{clubName}</span></div></div></section>
   <div className="tgt-player-content">{loading&&<div className="status-box">Henter din spillerprofil...</div>}{errorMessage&&<div className="error-box">{errorMessage}</div>}{message&&<div className="status-box">{message}</div>}{!loading&&!profile&&!errorMessage&&<div className="status-box">Spillerprofilen blev ikke fundet i TGT 2027. Kontrollér at spillerens e-mail eller brugernavn matcher login-brugeren.</div>}{!loading&&profile&&<><section className="tgt-player-intro"><div className="tgt-player-avatar">{getInitials(profile.name)}</div><div><h2 style={{margin:"0 0 4px"}}>{profile.name}</h2><span>TGT {profile.tournaments?.season??"–"}</span></div></section><button type="button" className="tgt-player-primary" onClick={()=>onStartScoring(profile.id)}>Start scoreindtastning</button><section className="tgt-player-kpis"><div className="tgt-player-kpi"><span>Sæsonstilling</span><strong>{position?`#${position}`:"–"}</strong></div><div className="tgt-player-kpi"><span>Sæsonscore</span><strong>{seasonScore===null?"–":formatScore(seasonScore)}</strong></div><div className="tgt-player-kpi"><span>Handicap</span><strong>{profile.handicap_index??"–"}</strong>{!editingHcp?<button type="button" className="tgt-hcp-link" onClick={()=>setEditingHcp(true)} aria-label="Redigér handicap" title="Redigér handicap">✎</button>:<div className="tgt-hcp-edit"><input inputMode="decimal" value={hcpDraft} onChange={e=>setHcpDraft(e.target.value)} aria-label="Nyt handicap"/><button className="tgt-hcp-save" onClick={saveHandicap} disabled={savingHcp}>{savingHcp?"Gemmer...":"Gem"}</button><button onClick={()=>{setEditingHcp(false);setHcpDraft(profile.handicap_index??"")}}>Annullér</button></div>}</div><div className="tgt-player-kpi"><span>Resultater</span><strong>{results.length}</strong></div></section><div className="tgt-player-grid"><section className="tgt-player-panel"><p className="eyebrow">Mine resultater</p><h2>Seneste runder</h2>{latest.length===0?<div className="status-box">Resultater registreres automatisk fra kommende runder.</div>:latest.map((r,i)=><div className="tgt-player-result" key={`${r.player_id}-${r.round_number}-${i}`}><span>TGT {r.tournaments?.season??"–"} · Runde {r.round_number}</span><strong>{formatScore(r.score)}</strong></div>)}</section><aside className="tgt-player-panel"><p className="eyebrow">Spillerstatistik</p><h2>Sæson {profile.tournaments?.season??"–"}</h2><div className="tgt-player-stat-grid">{[["Huller",playerStats.holes],["Eagles+",playerStats.eagles],["Birdies",playerStats.birdies],["Pars",playerStats.pars],["Bogeys",playerStats.bogeys],["Double+",playerStats.doublePlus]].map(([label,value])=><div className="tgt-player-stat" key={label}><strong>{value}</strong><small>{label}</small></div>)}</div>{playerStats.holes===0&&<div className="status-box" style={{marginTop:12}}>Statistik vises automatisk, når scorekort er gemt.</div>}</aside></div></>}</div></section><MitTgtBottomNav active="profile" onProfile={()=>onNavigate("profile")} onLeaderboard={()=>onNavigate("leaderboard")} onPlay={()=>profile&&onStartScoring(profile.id)} onLive={()=>onNavigate("live-leaderboard")} onMenu={()=>onNavigate("menu")} playDisabled={!profile} /></main>;
@@ -9764,6 +9791,7 @@ export default function App() {
   const [showPublicWhileLoggedIn, setShowPublicWhileLoggedIn] = useState(false);
   const [playerScoringId, setPlayerScoringId] = useState(null);
   const [playerPortalView, setPlayerPortalView] = useState("profile");
+  const [playerPortalHistory, setPlayerPortalHistory] = useState([]);
   const [playerProfileId, setPlayerProfileId] = useState(null);
   const [playerMenuRequested, setPlayerMenuRequested] = useState(false);
 
@@ -9800,6 +9828,7 @@ export default function App() {
     setShowPublicWhileLoggedIn(false);
     setPlayerScoringId(null);
     setPlayerPortalView("profile");
+    setPlayerPortalHistory([]);
     setPlayerProfileId(null);
     setPlayerMenuRequested(false);
   }
@@ -9829,16 +9858,33 @@ export default function App() {
     }
 
     const handlePortalNavigate = (view) => {
-      if (view === "play") { if (playerProfileId) setPlayerScoringId(playerProfileId); else setPlayerPortalView("profile"); return; }
-      if (view === "menu") { setPlayerMenuRequested(false); setPlayerPortalView((current)=>current === "menu" ? "profile" : "menu"); return; }
-      if (view === "public") { setPlayerPortalView("leaderboard"); return; }
-      setPlayerMenuRequested(false); setPlayerPortalView(view);
+      if (view === "__back__") {
+        setPlayerPortalHistory((history) => {
+          const next = [...history];
+          setPlayerPortalView(next.pop() ?? "profile");
+          return next;
+        });
+        return;
+      }
+      if (view === "play") {
+        if (playerProfileId) setPlayerScoringId(playerProfileId);
+        else {
+          setPlayerPortalHistory((history)=>[...history, playerPortalView]);
+          setPlayerPortalView("profile");
+        }
+        return;
+      }
+      const target = view === "public" ? "leaderboard" : view;
+      if (target === playerPortalView) return;
+      setPlayerPortalHistory((history)=>[...history, playerPortalView]);
+      setPlayerMenuRequested(false);
+      setPlayerPortalView(target);
     };
-    if (playerScoringId) return <MarkerDashboard session={session} playerId={playerScoringId} onBackToPlayer={()=>{setPlayerScoringId(null);setPlayerPortalView("menu");setPlayerMenuRequested(false)}} onLogout={handleLogout}/>;
+    if (playerScoringId) return <MarkerDashboard session={session} playerId={playerScoringId} onBackToPlayer={()=>{setPlayerScoringId(null);setPlayerPortalHistory((history)=>[...history,playerPortalView]);setPlayerPortalView("menu");setPlayerMenuRequested(false)}} onLogout={handleLogout}/>;
     if (playerPortalView === "menu") return <MitTgtMenuPage onNavigate={handlePortalNavigate} onLogout={handleLogout}/>;
     if (["live-leaderboard","leaderboard","team","rounds","profiles","closest","hall"].includes(playerPortalView)) return <Leaderboard key={`mit-tgt-${playerPortalView}`} initialPortalView={playerPortalView} onPortalNavigate={handlePortalNavigate} onOpenPlayerLogin={()=>handlePortalNavigate("profile")} isAuthenticated={true}/>;
     return <PlayerDashboard session={session} onLogout={handleLogout} onStartScoring={(id)=>setPlayerScoringId(id)} onNavigate={handlePortalNavigate} initialMenuOpen={playerMenuRequested} onProfileResolved={setPlayerProfileId}/>;
   }
-  if (showLogin === "player") return <PlayerLogin onCancel={()=>setShowLogin(null)} onLoginSuccess={(newSession)=>{setSession(newSession);setShowLogin(null);setPlayerPortalView("profile");setPlayerScoringId(null);setPlayerMenuRequested(false)}}/>;
+  if (showLogin === "player") return <PlayerLogin onCancel={()=>setShowLogin(null)} onLoginSuccess={(newSession)=>{setSession(newSession);setShowLogin(null);setPlayerPortalView("profile");setPlayerPortalHistory([]);setPlayerScoringId(null);setPlayerMenuRequested(false)}}/>;
   return <Leaderboard onOpenPlayerLogin={()=>setShowLogin("player")}/>;
 }

@@ -2578,6 +2578,62 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         @keyframes tgtTeeRise{0%{opacity:0;transform:translate(-50%,10px) scaleY(.55)}100%{opacity:1;transform:translate(-50%,0) scaleY(1)}}
         @media(prefers-reduced-motion:reduce){.tgt-tee-ball,.tgt-golden-tee{animation:none!important}}
         .login-icon:has(.tgt-tee-logo){width:82px!important;height:88px!important;background:transparent!important;overflow:visible!important}
+
+        /* FINAL SAFE VIEWPORT: all content stays clear of top and bottom navigation */
+        html,body,#root{min-height:100%;height:auto!important;overflow-x:hidden}
+        .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{
+          min-height:100dvh!important;
+          height:auto!important;
+          overflow:visible!important;
+          padding-bottom:calc(176px + env(safe-area-inset-bottom))!important;
+          scroll-padding-top:calc(104px + env(safe-area-inset-top))!important;
+          scroll-padding-bottom:calc(142px + env(safe-area-inset-bottom))!important;
+        }
+        .tgt-mit-tgt-universe .main-content,
+        .tgt-player-shell .tgt-player-content,
+        .tgt-menu-page-shell{
+          min-height:0!important;
+          height:auto!important;
+          overflow:visible!important;
+          padding-bottom:calc(116px + env(safe-area-inset-bottom))!important;
+        }
+        .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen{
+          position:relative!important;
+          inset:auto!important;
+          height:auto!important;
+          min-height:calc(100dvh - 88px)!important;
+          max-height:none!important;
+          overflow-x:hidden!important;
+          overflow-y:visible!important;
+          padding-top:16px!important;
+          padding-bottom:calc(148px + env(safe-area-inset-bottom))!important;
+          -webkit-overflow-scrolling:touch;
+        }
+        .tgt-mit-tgt-universe .leaderboard-card,
+        .tgt-player-home,
+        .tgt-menu-page-shell{margin-bottom:24px!important}
+        .tgt-mit-tgt-universe img,.tgt-player-shell img,.tgt-menu-page img{
+          display:block;max-width:100%;height:auto;object-fit:contain;
+        }
+        .tgt-app-back{
+          position:relative!important;
+          z-index:2147483000!important;
+          flex:0 0 auto!important;
+          visibility:visible!important;
+          opacity:1!important;
+          pointer-events:auto!important;
+        }
+        .tgt-menu-page-head>.tgt-app-back{position:absolute!important;left:max(12px,env(safe-area-inset-left))!important;top:max(12px,env(safe-area-inset-top))!important}
+        .tgt-public-topbar,.tgt-player-appbar{
+          padding-top:max(10px,env(safe-area-inset-top))!important;
+          z-index:2147482000!important;
+        }
+        .tgt-fixed-bottom-nav{z-index:2147482000!important}
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{padding-bottom:calc(168px + env(safe-area-inset-bottom))!important}
+          .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
+          .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen{padding-bottom:calc(144px + env(safe-area-inset-bottom))!important}
+        }
 `}</style>
 
       <header className="tgt-public-topbar">
@@ -3790,6 +3846,62 @@ function MitTgtMenuPage({ onNavigate, onLogout }) {
         .tgt-public-topbar .tgt-wordmark{flex:1;justify-content:center;min-width:0}.tgt-player-appbar{display:grid!important;grid-template-columns:72px 1fr 42px!important}.tgt-player-appbar .tgt-player-brand{justify-self:center}
         .tgt-menu-page-head{position:relative}.tgt-menu-page-head>.tgt-app-back{position:absolute;left:12px;top:12px}.tgt-menu-page-head>div{text-align:center}
         @media(max-width:500px){.tgt-app-back span{display:none}.tgt-app-back{min-width:42px;width:42px}.tgt-player-appbar{grid-template-columns:42px 1fr 42px!important}}
+
+        /* FINAL SAFE VIEWPORT: all content stays clear of top and bottom navigation */
+        html,body,#root{min-height:100%;height:auto!important;overflow-x:hidden}
+        .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{
+          min-height:100dvh!important;
+          height:auto!important;
+          overflow:visible!important;
+          padding-bottom:calc(176px + env(safe-area-inset-bottom))!important;
+          scroll-padding-top:calc(104px + env(safe-area-inset-top))!important;
+          scroll-padding-bottom:calc(142px + env(safe-area-inset-bottom))!important;
+        }
+        .tgt-mit-tgt-universe .main-content,
+        .tgt-player-shell .tgt-player-content,
+        .tgt-menu-page-shell{
+          min-height:0!important;
+          height:auto!important;
+          overflow:visible!important;
+          padding-bottom:calc(116px + env(safe-area-inset-bottom))!important;
+        }
+        .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen{
+          position:relative!important;
+          inset:auto!important;
+          height:auto!important;
+          min-height:calc(100dvh - 88px)!important;
+          max-height:none!important;
+          overflow-x:hidden!important;
+          overflow-y:visible!important;
+          padding-top:16px!important;
+          padding-bottom:calc(148px + env(safe-area-inset-bottom))!important;
+          -webkit-overflow-scrolling:touch;
+        }
+        .tgt-mit-tgt-universe .leaderboard-card,
+        .tgt-player-home,
+        .tgt-menu-page-shell{margin-bottom:24px!important}
+        .tgt-mit-tgt-universe img,.tgt-player-shell img,.tgt-menu-page img{
+          display:block;max-width:100%;height:auto;object-fit:contain;
+        }
+        .tgt-app-back{
+          position:relative!important;
+          z-index:2147483000!important;
+          flex:0 0 auto!important;
+          visibility:visible!important;
+          opacity:1!important;
+          pointer-events:auto!important;
+        }
+        .tgt-menu-page-head>.tgt-app-back{position:absolute!important;left:max(12px,env(safe-area-inset-left))!important;top:max(12px,env(safe-area-inset-top))!important}
+        .tgt-public-topbar,.tgt-player-appbar{
+          padding-top:max(10px,env(safe-area-inset-top))!important;
+          z-index:2147482000!important;
+        }
+        .tgt-fixed-bottom-nav{z-index:2147482000!important}
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{padding-bottom:calc(168px + env(safe-area-inset-bottom))!important}
+          .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
+          .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen{padding-bottom:calc(144px + env(safe-area-inset-bottom))!important}
+        }
 `}</style>
   </main>;
 }
@@ -4146,6 +4258,62 @@ function PlayerDashboard({ session, onLogout, onStartScoring, onNavigate, initia
         @keyframes tgtTeeRise{0%{opacity:0;transform:translate(-50%,10px) scaleY(.55)}100%{opacity:1;transform:translate(-50%,0) scaleY(1)}}
         @media(prefers-reduced-motion:reduce){.tgt-tee-ball,.tgt-golden-tee{animation:none!important}}
         .login-icon:has(.tgt-tee-logo){width:82px!important;height:88px!important;background:transparent!important;overflow:visible!important}
+
+        /* FINAL SAFE VIEWPORT: all content stays clear of top and bottom navigation */
+        html,body,#root{min-height:100%;height:auto!important;overflow-x:hidden}
+        .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{
+          min-height:100dvh!important;
+          height:auto!important;
+          overflow:visible!important;
+          padding-bottom:calc(176px + env(safe-area-inset-bottom))!important;
+          scroll-padding-top:calc(104px + env(safe-area-inset-top))!important;
+          scroll-padding-bottom:calc(142px + env(safe-area-inset-bottom))!important;
+        }
+        .tgt-mit-tgt-universe .main-content,
+        .tgt-player-shell .tgt-player-content,
+        .tgt-menu-page-shell{
+          min-height:0!important;
+          height:auto!important;
+          overflow:visible!important;
+          padding-bottom:calc(116px + env(safe-area-inset-bottom))!important;
+        }
+        .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen{
+          position:relative!important;
+          inset:auto!important;
+          height:auto!important;
+          min-height:calc(100dvh - 88px)!important;
+          max-height:none!important;
+          overflow-x:hidden!important;
+          overflow-y:visible!important;
+          padding-top:16px!important;
+          padding-bottom:calc(148px + env(safe-area-inset-bottom))!important;
+          -webkit-overflow-scrolling:touch;
+        }
+        .tgt-mit-tgt-universe .leaderboard-card,
+        .tgt-player-home,
+        .tgt-menu-page-shell{margin-bottom:24px!important}
+        .tgt-mit-tgt-universe img,.tgt-player-shell img,.tgt-menu-page img{
+          display:block;max-width:100%;height:auto;object-fit:contain;
+        }
+        .tgt-app-back{
+          position:relative!important;
+          z-index:2147483000!important;
+          flex:0 0 auto!important;
+          visibility:visible!important;
+          opacity:1!important;
+          pointer-events:auto!important;
+        }
+        .tgt-menu-page-head>.tgt-app-back{position:absolute!important;left:max(12px,env(safe-area-inset-left))!important;top:max(12px,env(safe-area-inset-top))!important}
+        .tgt-public-topbar,.tgt-player-appbar{
+          padding-top:max(10px,env(safe-area-inset-top))!important;
+          z-index:2147482000!important;
+        }
+        .tgt-fixed-bottom-nav{z-index:2147482000!important}
+        @media(max-width:700px){
+          .tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page{padding-bottom:calc(168px + env(safe-area-inset-bottom))!important}
+          .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
+          .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen{padding-bottom:calc(144px + env(safe-area-inset-bottom))!important}
+        }
 `}</style><section className="tgt-player-home">
   <header className="tgt-player-appbar">
     <button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>
@@ -9124,6 +9292,12 @@ function MarkerDashboard({
         .tgt-public-shell:not(.tgt-hall-fullscreen) .tgt-kicker{border-color:rgba(255,255,255,.38)!important;color:#fff!important}
         .tgt-public-shell:not(.tgt-hall-fullscreen) .tgt-primary-action{border-color:#fff!important;color:#fff!important;background:#168454!important}
         .tgt-fixed-bottom-nav{border-color:rgba(255,255,255,.20)!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item{color:rgba(238,250,242,.72)!important}.tgt-fixed-bottom-nav .tgt-fixed-nav-item.is-active{color:#fff!important;background:rgba(255,255,255,.14)!important}.tgt-fixed-play-disc{border-color:#fff!important;color:#fff!important;background:linear-gradient(145deg,#ef5a61,#c9323a)!important}
+
+        /* Scoring page safe viewport */
+        .tgt-marker-dashboard-card{padding-bottom:calc(48px + env(safe-area-inset-bottom))!important}
+        .tgt-marker-dashboard-card>section:last-child{margin-bottom:calc(28px + env(safe-area-inset-bottom))!important}
+        .tgt-marker-player-back{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important}
+        .tgt-marker-player-back span{font-size:25px!important;line-height:1!important}
 `}</style>
 
       <section className="marker-card tgt-marker-dashboard-card">
@@ -9145,7 +9319,7 @@ function MarkerDashboard({
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {playerId && onBackToPlayer && (
-              <button type="button" onClick={onBackToPlayer} className="logout-button">Menu</button>
+              <button type="button" onClick={onBackToPlayer} className="logout-button tgt-marker-player-back" aria-label="Tilbage til Mit TGT"><span aria-hidden="true">‹</span> Tilbage</button>
             )}
             {assignment && availableAssignments.length > 1 && (
               <button

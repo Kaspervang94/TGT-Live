@@ -759,7 +759,10 @@ function MitTgtBottomNav({ active = "profile", onProfile, onLeaderboard, onPlay,
 
 function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavigate = null, isAuthenticated = false }) {
   const [mainTab, setMainTab] = useState(initialPortalView === "team" ? "team" : "individual");
-  const [tab, setTab] = useState(initialPortalView === "live-leaderboard" ? "live" : initialPortalView === "team" ? "team" : "season");
+  const [tab, setTab] = useState(
+    initialPortalView === "live-leaderboard" ? "live" :
+    ["team", "rounds", "profiles", "hall"].includes(initialPortalView) ? initialPortalView : "season"
+  );
   const [selectedSeason, setSelectedSeason] = useState(ACTIVE_SEASON);
   const [availableSeasons] = useState([ACTIVE_SEASON]);
   const [profileSearch, setProfileSearch] = useState("");
@@ -2804,10 +2807,39 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         .tgt-split-scorecard{background:#fff!important;border-color:#d5e4da!important}
         .tgt-live-fullscreen-open .tgt-public-topbar{display:none!important}
         @media(max-width:600px){.tgt-live-fullscreen-topline{grid-template-columns:auto 1fr auto!important;padding:10px!important}.tgt-live-back-button,.tgt-live-login-button{min-height:38px!important;padding:0 9px!important}.tgt-live-fullscreen-header strong{font-size:16px!important}.tgt-live-view-toggle{margin:0 10px 10px!important;border-radius:14px!important}}
-`}</style>
+
+        /* Smooth live overview and closest-to-pin entry */
+        .tgt-live-empty-state{width:min(680px,calc(100% - 24px));display:flex;align-items:center;justify-content:center;gap:16px;margin:18px auto;padding:22px;border:1px solid #d7e6dc;border-radius:20px;background:#fff;box-shadow:0 10px 28px rgba(7,63,44,.07);text-align:left}.tgt-live-empty-icon{width:44px;height:44px;min-width:44px;display:grid;place-items:center;border-radius:50%;color:#168454;background:#eaf5ee}.tgt-live-empty-state .eyebrow{margin:0 0 4px}.tgt-live-empty-state h2{margin:0;color:#113c2d!important;font-size:24px}.tgt-live-empty-state p:last-child{margin:5px 0 0;color:#688077}
+        .tgt-live-closest-cta{appearance:none;width:min(720px,calc(100% - 24px));min-height:86px;display:grid;grid-template-columns:54px minmax(0,1fr) 24px;align-items:center;gap:14px;margin:16px auto 24px;padding:14px 18px;border:1px solid #cfe2d6;border-radius:22px;color:#113c2d;background:linear-gradient(145deg,#fff,#f2f8f4);box-shadow:0 12px 30px rgba(7,63,44,.10);text-align:left;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}.tgt-live-closest-cta:hover{transform:translateY(-2px);box-shadow:0 17px 36px rgba(7,63,44,.14)}.tgt-live-closest-icon{width:52px;height:52px;display:grid;place-items:center;border-radius:17px;color:#fff;background:linear-gradient(145deg,#27a467,#08794c)}.tgt-live-closest-icon svg{width:29px;height:29px;fill:none;stroke:currentColor;stroke-width:1.8}.tgt-live-closest-cta strong{display:block;font-size:18px}.tgt-live-closest-cta small{display:block;margin-top:5px;color:#688077;font-size:12px}.tgt-live-closest-cta b{color:#df454d;font-size:32px;font-weight:400}@media(max-width:600px){.tgt-live-empty-state,.tgt-live-closest-cta{width:calc(100% - 16px)}.tgt-live-closest-cta{min-height:76px;padding:11px 13px}.tgt-live-closest-icon{width:46px;height:46px}}
+
+        /* Guaranteed fullscreen exit and smoother authenticated panels */
+        .tgt-panel-auth-back{position:fixed!important;left:max(12px,env(safe-area-inset-left))!important;top:max(12px,env(safe-area-inset-top))!important;z-index:2147483646!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:44px!important;height:44px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.72)!important;border-radius:14px!important;color:#fff!important;background:#075238!important;box-shadow:0 8px 24px rgba(3,38,27,.28)!important;cursor:pointer!important}
+        .tgt-panel-auth-back svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}.tgt-panel-auth-back span{font-size:11px;font-weight:1000;letter-spacing:.04em}
+        .tgt-panel-fullscreen-open .tgt-public-topbar{padding-left:76px!important}
+        .tgt-panel-fullscreen-open .leaderboard-card{border:1px solid #dce7e0!important;box-shadow:0 14px 38px rgba(7,63,44,.08)!important}
+        .tgt-panel-fullscreen-open .section-heading{padding:26px 18px!important;background:linear-gradient(180deg,#fff,#f8fbf9)!important;border-bottom:1px solid #e2ebe5!important}
+        .tgt-panel-fullscreen-open .section-heading h2{letter-spacing:-.025em!important}.tgt-panel-fullscreen-open .section-heading .eyebrow{letter-spacing:.18em!important}
+        .tgt-hall-fullscreen .tgt-hof-card{transition:transform .22s ease,box-shadow .22s ease!important}.tgt-hall-fullscreen .tgt-hof-winner{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+        @media(max-width:500px){.tgt-panel-auth-back{width:44px!important;padding:0!important}.tgt-panel-auth-back span{display:none!important}.tgt-panel-fullscreen-open .tgt-public-topbar{padding-left:64px!important}}
+
+        /* ONE UNIFIED NAVIGATION SYSTEM */
+        .tgt-unified-back{appearance:none!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:44px!important;height:44px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.72)!important;border-radius:14px!important;color:#fff!important;background:#075238!important;background-image:none!important;box-shadow:0 7px 20px rgba(3,38,27,.22)!important;filter:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;opacity:1!important;visibility:visible!important;cursor:pointer!important;z-index:2147483640!important}
+        .tgt-unified-back svg{display:block!important;width:23px!important;height:23px!important;min-width:23px!important;fill:none!important;stroke:#fff!important;stroke-width:2.5!important;stroke-linecap:round!important;stroke-linejoin:round!important}.tgt-unified-back span{color:#fff!important;font-size:11px!important;font-weight:1000!important}.tgt-unified-back:active{transform:scale(.96)!important;background:#063f2d!important}
+        .tgt-unified-home{min-height:40px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.56)!important;border-radius:999px!important;color:#fff!important;background:transparent!important;font-size:10px!important;font-weight:1000!important;letter-spacing:.12em!important;box-shadow:none!important;cursor:pointer!important}
+        .tgt-unified-brand-home{appearance:none!important;border:0!important;background:transparent!important;color:inherit!important;text-align:left!important;padding:0!important;margin:0!important;cursor:pointer!important;box-shadow:none!important}
+        .tgt-menu-home-link{appearance:none!important;border:0!important;background:transparent!important;color:inherit!important;text-align:center!important;padding:0!important;margin:0 auto!important;cursor:pointer!important;box-shadow:none!important}.tgt-menu-home-link p,.tgt-menu-home-link h1,.tgt-menu-home-link span{pointer-events:none}
+        .tgt-public-topbar>.tgt-unified-back{flex:0 0 auto!important}.tgt-player-appbar>.tgt-unified-back{justify-self:start!important}.tgt-menu-page-head>.tgt-unified-back{position:absolute!important;left:max(12px,env(safe-area-inset-left))!important;top:max(12px,env(safe-area-inset-top))!important}
+        .tgt-panel-auth-back{display:none!important}
+        @media(max-width:500px){.tgt-unified-back{width:44px!important;min-width:44px!important;padding:0!important}.tgt-unified-back span{display:none!important}.tgt-unified-home{min-height:36px!important;padding:0 9px!important;font-size:8px!important}}
+
+        /* FINAL UNIFIED SOFT NAVIGATION AND BUTTONS */
+        button,.login-submit-button,.login-cancel-button{transition:transform .16s ease,box-shadow .16s ease,background .16s ease,border-color .16s ease!important}button:active:not(:disabled){transform:scale(.97)!important}.login-submit-button,.login-cancel-button,.tgt-primary-action,.tgt-secondary-action,.tgt-tabs button{border-radius:14px!important;box-shadow:0 7px 18px rgba(7,63,44,.08)!important}
+        .tgt-unified-back{appearance:none!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:44px!important;width:auto!important;height:44px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.68)!important;border-radius:14px!important;color:#fff!important;background:#075238!important;box-shadow:0 7px 20px rgba(3,38,27,.22)!important;opacity:1!important;visibility:visible!important;cursor:pointer!important}.tgt-unified-back svg{width:23px!important;height:23px!important;fill:none!important;stroke:#fff!important;stroke-width:2.5!important;stroke-linecap:round!important;stroke-linejoin:round!important}.tgt-unified-back span{font-size:11px!important;font-weight:1000!important;color:#fff!important}.tgt-unified-home{border-radius:14px!important;background:rgba(255,255,255,.10)!important}
+        .tgt-public-topbar,.tgt-player-appbar{display:grid!important;grid-template-columns:auto minmax(0,1fr) auto!important;align-items:center!important;gap:8px!important;min-height:68px!important;padding:10px 12px!important}.tgt-wordmark,.tgt-player-brand{justify-self:center!important}.tgt-auth-header-actions{justify-self:end!important}@media(max-width:500px){.tgt-unified-back{width:44px!important;min-width:44px!important;padding:0!important}.tgt-unified-back span{display:none!important}}
+ `}</style>
 
       <header className="tgt-public-topbar">
-        {isAuthenticated && <button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onPortalNavigate?.("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>}
+        {isAuthenticated && <button type="button" className="tgt-unified-back" aria-label="Tilbage til forrige side" onClick={()=>onPortalNavigate?.("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>}
         <div className="tgt-wordmark">
           <TgtTeeLogo compact />
           <span>
@@ -2855,7 +2887,7 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         </button>}
         </div>
         {isAuthenticated && <div className="tgt-auth-header-actions">
-          <button type="button" className="tgt-auth-home" onClick={()=>onPortalNavigate?.("profile")}>MIT TGT</button>
+          <button type="button" className="tgt-unified-home" onClick={()=>onPortalNavigate?.("profile")}>MIT TGT</button>
           <button type="button" className="tgt-app-burger" aria-label="Åbn menu" onClick={()=>onPortalNavigate?.("menu")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
         </div>}
       </header>
@@ -2961,11 +2993,11 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
           <header className="tgt-individual-fullscreen-header">
             <button
               type="button"
-              className="tgt-individual-back-button"
+              className="tgt-unified-back"
               onClick={closeIndividualFullscreen}
               aria-label="Tilbage til start"
             >
-              <span aria-hidden="true">‹</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
               Tilbage
             </button>
             <strong>Individuelt leaderboard</strong>
@@ -2974,8 +3006,8 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         )}
         {teamFullscreen && !isAuthenticated && (
           <header className="tgt-team-fullscreen-header">
-            <button type="button" className="tgt-team-back-button" onClick={closeTeamFullscreen} aria-label="Tilbage til start">
-              <span aria-hidden="true">‹</span>
+            <button type="button" className="tgt-unified-back" onClick={closeTeamFullscreen} aria-label="Tilbage til start">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
               Tilbage
             </button>
             <strong>Holdleaderboard</strong>
@@ -2985,8 +3017,8 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         {liveFullscreen && !isAuthenticated && (
           <header className="tgt-live-fullscreen-header">
             <div className="tgt-live-fullscreen-topline">
-              <button type="button" className="tgt-live-back-button" onClick={closeLiveFullscreen} aria-label="Tilbage til start">
-                <span aria-hidden="true">‹</span>
+              <button type="button" className="tgt-unified-back" onClick={closeLiveFullscreen} aria-label="Tilbage til start">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
                 Tilbage
               </button>
               <strong>Live score</strong>
@@ -3000,8 +3032,8 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         )}
         {panelFullscreen && !isAuthenticated && (
           <header className="tgt-panel-fullscreen-header">
-            <button type="button" className="tgt-panel-back-button" onClick={closePanelFullscreen} aria-label="Tilbage til start">
-              <span aria-hidden="true">‹</span> Tilbage
+            <button type="button" className="tgt-unified-back" onClick={closePanelFullscreen} aria-label="Tilbage til start">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg> Tilbage
             </button>
             <strong>{headings[panelFullscreen]?.title ?? "TGT Live"}</strong>
             <span className="tgt-panel-header-balance" aria-hidden="true" />
@@ -3086,7 +3118,7 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
                   ["season", "Overblik"],
                   ["live", liveData?.round ? `Runde ${liveData.round.round_number}` : "Live runde"],
                   ["final", "Samlet finalestilling"],
-                  ["closest", "Tættest på pinden"],
+
                 ].map(([value, label]) => (
                   <button
                     type="button"
@@ -3369,10 +3401,7 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
           )}
 
           {!loading && !errorMessage && tab === "live" && !liveData?.round && (
-            <section className="leaderboard-card" style={{textAlign:"center",padding:"42px 20px"}}>
-              <p className="eyebrow">LIVE</p><h2 style={{margin:"8px 0"}}>Ingen aktiv runde</h2>
-              <p className="description">Livescore vises automatisk, når en runde er sat til live.</p>
-            </section>
+            <section className="tgt-live-empty-state"><span className="tgt-live-empty-icon" aria-hidden="true">●</span><div><p className="eyebrow">LIVE</p><h2>Ingen aktiv runde</h2><p>Livescore åbner automatisk, når næste runde går live.</p></div></section>
           )}
           {!loading && !errorMessage && tab === "live" && Boolean(liveData?.round) && (!liveFullscreen || liveView === "individual") && (
             <>
@@ -3539,6 +3568,12 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
               )}
               </div>
             </>
+          )}
+          {!loading && !errorMessage && tab === "live" && Boolean(liveData?.round) && (
+            <button type="button" className="tgt-live-closest-cta" onClick={() => openPanelFullscreen("closest")}>
+              <span className="tgt-live-closest-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg></span>
+              <span><strong>Tættest på pinden</strong><small>Se hvem der fører på rundens par 3-huller</small></span><b aria-hidden="true">›</b>
+            </button>
           )}
           {!loading && !errorMessage && tab === "team" && (
             <div className="table-wrapper tgt-team-leaderboard">
@@ -3917,7 +3952,7 @@ function MitTgtMenuPage({ onNavigate, onLogout }) {
     { title: "Livescore", subtitle: "Vises kun ved en aktiv runde", view: "live-leaderboard", icon: "live" },
     { title: "Runder", subtitle: "Program, baner og tidligere runder", view: "rounds", icon: "calendar" },
     { title: "Spillerprofiler", subtitle: "Spillere, klubber og statistik", view: "profiles", icon: "players" },
-    { title: "Tættest på pinden", subtitle: "Par 3-konkurrencen", view: "closest", icon: "target" },
+
     { title: "Hall of Fame", subtitle: "Tidligere mestre og holdvindere", view: "hall", icon: "trophy" },
     { title: "Scoreindtastning", subtitle: "Åbn din bold og indtast scorer", view: "play", icon: "flag" },
   ];
@@ -3937,7 +3972,7 @@ function MitTgtMenuPage({ onNavigate, onLogout }) {
   };
   return <main className="tgt-menu-page">
     <section className="tgt-menu-page-shell">
-      <header className="tgt-menu-page-head"><button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button><div><p>MIT TGT</p><h1>Menu</h1><span>Vælg hvor du vil hen</span></div></header>
+      <header className="tgt-menu-page-head"><button type="button" className="tgt-unified-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button><button type="button" className="tgt-menu-home-link" onClick={()=>onNavigate("profile")}><p>MIT TGT</p><h1>Menu</h1><span>Vælg hvor du vil hen</span></button></header>
       <div className="tgt-menu-page-grid">
         {menuItems.map((item)=><button type="button" key={item.view} onClick={()=>onNavigate(item.view)}><span className="tgt-menu-page-icon"><svg viewBox="0 0 24 24" aria-hidden="true">{icon(item.icon)}</svg></span><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><b aria-hidden="true">›</b></button>)}
       </div>
@@ -4130,7 +4165,22 @@ function MitTgtMenuPage({ onNavigate, onLogout }) {
           .tgt-player-shell .tgt-app-back span,
           .tgt-menu-page .tgt-app-back span{display:none!important}
         }
-`}</style>
+
+        /* ONE UNIFIED NAVIGATION SYSTEM */
+        .tgt-unified-back{appearance:none!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:44px!important;height:44px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.72)!important;border-radius:14px!important;color:#fff!important;background:#075238!important;background-image:none!important;box-shadow:0 7px 20px rgba(3,38,27,.22)!important;filter:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;opacity:1!important;visibility:visible!important;cursor:pointer!important;z-index:2147483640!important}
+        .tgt-unified-back svg{display:block!important;width:23px!important;height:23px!important;min-width:23px!important;fill:none!important;stroke:#fff!important;stroke-width:2.5!important;stroke-linecap:round!important;stroke-linejoin:round!important}.tgt-unified-back span{color:#fff!important;font-size:11px!important;font-weight:1000!important}.tgt-unified-back:active{transform:scale(.96)!important;background:#063f2d!important}
+        .tgt-unified-home{min-height:40px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.56)!important;border-radius:999px!important;color:#fff!important;background:transparent!important;font-size:10px!important;font-weight:1000!important;letter-spacing:.12em!important;box-shadow:none!important;cursor:pointer!important}
+        .tgt-unified-brand-home{appearance:none!important;border:0!important;background:transparent!important;color:inherit!important;text-align:left!important;padding:0!important;margin:0!important;cursor:pointer!important;box-shadow:none!important}
+        .tgt-menu-home-link{appearance:none!important;border:0!important;background:transparent!important;color:inherit!important;text-align:center!important;padding:0!important;margin:0 auto!important;cursor:pointer!important;box-shadow:none!important}.tgt-menu-home-link p,.tgt-menu-home-link h1,.tgt-menu-home-link span{pointer-events:none}
+        .tgt-public-topbar>.tgt-unified-back{flex:0 0 auto!important}.tgt-player-appbar>.tgt-unified-back{justify-self:start!important}.tgt-menu-page-head>.tgt-unified-back{position:absolute!important;left:max(12px,env(safe-area-inset-left))!important;top:max(12px,env(safe-area-inset-top))!important}
+        .tgt-panel-auth-back{display:none!important}
+        @media(max-width:500px){.tgt-unified-back{width:44px!important;min-width:44px!important;padding:0!important}.tgt-unified-back span{display:none!important}.tgt-unified-home{min-height:36px!important;padding:0 9px!important;font-size:8px!important}}
+
+        /* FINAL UNIFIED SOFT NAVIGATION AND BUTTONS */
+        button,.login-submit-button,.login-cancel-button{transition:transform .16s ease,box-shadow .16s ease,background .16s ease,border-color .16s ease!important}button:active:not(:disabled){transform:scale(.97)!important}.login-submit-button,.login-cancel-button,.tgt-primary-action,.tgt-secondary-action,.tgt-tabs button{border-radius:14px!important;box-shadow:0 7px 18px rgba(7,63,44,.08)!important}
+        .tgt-unified-back{appearance:none!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:44px!important;width:auto!important;height:44px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.68)!important;border-radius:14px!important;color:#fff!important;background:#075238!important;box-shadow:0 7px 20px rgba(3,38,27,.22)!important;opacity:1!important;visibility:visible!important;cursor:pointer!important}.tgt-unified-back svg{width:23px!important;height:23px!important;fill:none!important;stroke:#fff!important;stroke-width:2.5!important;stroke-linecap:round!important;stroke-linejoin:round!important}.tgt-unified-back span{font-size:11px!important;font-weight:1000!important;color:#fff!important}.tgt-unified-home{border-radius:14px!important;background:rgba(255,255,255,.10)!important}
+        .tgt-public-topbar,.tgt-player-appbar{display:grid!important;grid-template-columns:auto minmax(0,1fr) auto!important;align-items:center!important;gap:8px!important;min-height:68px!important;padding:10px 12px!important}.tgt-wordmark,.tgt-player-brand{justify-self:center!important}.tgt-auth-header-actions{justify-self:end!important}@media(max-width:500px){.tgt-unified-back{width:44px!important;min-width:44px!important;padding:0!important}.tgt-unified-back span{display:none!important}}
+ `}</style>
   </main>;
 }
 
@@ -4657,10 +4707,28 @@ function PlayerDashboard({ session, onLogout, onStartScoring, onNavigate, initia
         .tgt-marker-live-panel .position-badge.position-1{color:#513700!important;background:linear-gradient(145deg,#fff0ae,#d7ad4f 55%,#b77b28)!important}
         .tgt-marker-live-panel .position-badge.position-2{color:#33424b!important;background:#d9e0e4!important}
         .tgt-marker-live-panel .position-badge.position-3{color:#5c3214!important;background:#dca56f!important}
-`}</style><section className="tgt-player-home">
+
+        /* Compact smooth handicap editor */
+        .tgt-player-kpi:has(.tgt-hcp-edit){align-items:stretch!important;justify-content:flex-start!important}.tgt-hcp-edit{grid-template-columns:minmax(76px,1fr) auto auto!important;align-items:center!important;gap:7px!important;margin-top:10px!important}.tgt-hcp-edit input{height:42px!important;padding:0 11px!important;border:1px solid #cfe0d5!important;border-radius:12px!important;background:#f8fbf9!important;font-size:16px!important}.tgt-hcp-edit button{height:42px!important;min-height:42px!important;padding:0 11px!important;border-radius:12px!important;font-size:11px!important;box-shadow:none!important}.tgt-hcp-edit button:last-child{border:1px solid #d7e1da!important;color:#587066!important;background:#fff!important}.tgt-hcp-save{border:1px solid #0d7b4e!important;color:#fff!important;background:#0b7049!important}@media(max-width:600px){.tgt-hcp-edit{grid-template-columns:minmax(70px,1fr) auto auto!important}.tgt-hcp-edit input{grid-column:auto!important;min-width:0!important}}
+
+        /* ONE UNIFIED NAVIGATION SYSTEM */
+        .tgt-unified-back{appearance:none!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:44px!important;height:44px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.72)!important;border-radius:14px!important;color:#fff!important;background:#075238!important;background-image:none!important;box-shadow:0 7px 20px rgba(3,38,27,.22)!important;filter:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;opacity:1!important;visibility:visible!important;cursor:pointer!important;z-index:2147483640!important}
+        .tgt-unified-back svg{display:block!important;width:23px!important;height:23px!important;min-width:23px!important;fill:none!important;stroke:#fff!important;stroke-width:2.5!important;stroke-linecap:round!important;stroke-linejoin:round!important}.tgt-unified-back span{color:#fff!important;font-size:11px!important;font-weight:1000!important}.tgt-unified-back:active{transform:scale(.96)!important;background:#063f2d!important}
+        .tgt-unified-home{min-height:40px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.56)!important;border-radius:999px!important;color:#fff!important;background:transparent!important;font-size:10px!important;font-weight:1000!important;letter-spacing:.12em!important;box-shadow:none!important;cursor:pointer!important}
+        .tgt-unified-brand-home{appearance:none!important;border:0!important;background:transparent!important;color:inherit!important;text-align:left!important;padding:0!important;margin:0!important;cursor:pointer!important;box-shadow:none!important}
+        .tgt-menu-home-link{appearance:none!important;border:0!important;background:transparent!important;color:inherit!important;text-align:center!important;padding:0!important;margin:0 auto!important;cursor:pointer!important;box-shadow:none!important}.tgt-menu-home-link p,.tgt-menu-home-link h1,.tgt-menu-home-link span{pointer-events:none}
+        .tgt-public-topbar>.tgt-unified-back{flex:0 0 auto!important}.tgt-player-appbar>.tgt-unified-back{justify-self:start!important}.tgt-menu-page-head>.tgt-unified-back{position:absolute!important;left:max(12px,env(safe-area-inset-left))!important;top:max(12px,env(safe-area-inset-top))!important}
+        .tgt-panel-auth-back{display:none!important}
+        @media(max-width:500px){.tgt-unified-back{width:44px!important;min-width:44px!important;padding:0!important}.tgt-unified-back span{display:none!important}.tgt-unified-home{min-height:36px!important;padding:0 9px!important;font-size:8px!important}}
+
+        /* FINAL UNIFIED SOFT NAVIGATION AND BUTTONS */
+        button,.login-submit-button,.login-cancel-button{transition:transform .16s ease,box-shadow .16s ease,background .16s ease,border-color .16s ease!important}button:active:not(:disabled){transform:scale(.97)!important}.login-submit-button,.login-cancel-button,.tgt-primary-action,.tgt-secondary-action,.tgt-tabs button{border-radius:14px!important;box-shadow:0 7px 18px rgba(7,63,44,.08)!important}
+        .tgt-unified-back{appearance:none!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:44px!important;width:auto!important;height:44px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.68)!important;border-radius:14px!important;color:#fff!important;background:#075238!important;box-shadow:0 7px 20px rgba(3,38,27,.22)!important;opacity:1!important;visibility:visible!important;cursor:pointer!important}.tgt-unified-back svg{width:23px!important;height:23px!important;fill:none!important;stroke:#fff!important;stroke-width:2.5!important;stroke-linecap:round!important;stroke-linejoin:round!important}.tgt-unified-back span{font-size:11px!important;font-weight:1000!important;color:#fff!important}.tgt-unified-home{border-radius:14px!important;background:rgba(255,255,255,.10)!important}
+        .tgt-public-topbar,.tgt-player-appbar{display:grid!important;grid-template-columns:auto minmax(0,1fr) auto!important;align-items:center!important;gap:8px!important;min-height:68px!important;padding:10px 12px!important}.tgt-wordmark,.tgt-player-brand{justify-self:center!important}.tgt-auth-header-actions{justify-self:end!important}@media(max-width:500px){.tgt-unified-back{width:44px!important;min-width:44px!important;padding:0!important}.tgt-unified-back span{display:none!important}}
+ `}</style><section className="tgt-player-home">
   <header className="tgt-player-appbar">
-    <button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>
-    <div className="tgt-player-brand"><TgtTeeLogo compact /><span><strong>MIT TGT</strong><small>THE GOLDEN TEE TOUR</small></span></div>
+    <button type="button" className="tgt-unified-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>
+    <button type="button" className="tgt-player-brand tgt-unified-brand-home" onClick={()=>onNavigate("profile")} aria-label="Gå til Mit TGT"><TgtTeeLogo compact /><span><strong>MIT TGT</strong><small>THE GOLDEN TEE TOUR</small></span></button>
     <button type="button" className="tgt-app-burger" aria-label="Åbn menu" onClick={()=>onNavigate("menu")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   </header>
   <section className="tgt-player-head"><div><p className="eyebrow" style={{color:"#dff0e5"}}>MIN PROFIL</p><h1>Hej {profile?.name?.split(" ")[0]??"spiller"}</h1><div className="tgt-player-meta"><span>{dguNumber}</span><span>{clubName}</span></div></div></section>
@@ -8825,6 +8893,8 @@ function MarkerDashboard({
     useState("");
   const [markerLiveOpen, setMarkerLiveOpen] = useState(false);
   const [markerMenuOpen, setMarkerMenuOpen] = useState(false);
+  const [scoreKeypadPlayer, setScoreKeypadPlayer] = useState(null);
+  const [scoreKeypadTenPlus, setScoreKeypadTenPlus] = useState(false);
   const [markerLiveView, setMarkerLiveView] = useState("individual");
   const [markerLiveData, setMarkerLiveData] = useState(null);
   const [markerTeamData, setMarkerTeamData] = useState(null);
@@ -9755,6 +9825,13 @@ function MarkerDashboard({
         .tgt-live-fullscreen-open .tgt-app-back,.tgt-panel-fullscreen-open .tgt-app-back{display:inline-flex!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
         .tgt-marker-live-toggle button:disabled{opacity:.42!important;cursor:not-allowed!important;background:#edf2ee!important;color:#75847b!important}
         @media(max-width:500px){.tgt-auth-home{min-height:36px!important;padding:0 8px!important;font-size:8px!important}.tgt-auth-header-actions{gap:2px!important}}
+
+        /* FINAL UNIFIED SOFT NAVIGATION AND BUTTONS */
+        button,.login-submit-button,.login-cancel-button{transition:transform .16s ease,box-shadow .16s ease,background .16s ease,border-color .16s ease!important}button:active:not(:disabled){transform:scale(.97)!important}.login-submit-button,.login-cancel-button,.tgt-primary-action,.tgt-secondary-action,.tgt-tabs button{border-radius:14px!important;box-shadow:0 7px 18px rgba(7,63,44,.08)!important}
+        .tgt-unified-back{appearance:none!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:44px!important;width:auto!important;height:44px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.68)!important;border-radius:14px!important;color:#fff!important;background:#075238!important;box-shadow:0 7px 20px rgba(3,38,27,.22)!important;opacity:1!important;visibility:visible!important;cursor:pointer!important}.tgt-unified-back svg{width:23px!important;height:23px!important;fill:none!important;stroke:#fff!important;stroke-width:2.5!important;stroke-linecap:round!important;stroke-linejoin:round!important}.tgt-unified-back span{font-size:11px!important;font-weight:1000!important;color:#fff!important}.tgt-unified-home{border-radius:14px!important;background:rgba(255,255,255,.10)!important}
+        .tgt-public-topbar,.tgt-player-appbar{display:grid!important;grid-template-columns:auto minmax(0,1fr) auto!important;align-items:center!important;gap:8px!important;min-height:68px!important;padding:10px 12px!important}.tgt-wordmark,.tgt-player-brand{justify-self:center!important}.tgt-auth-header-actions{justify-self:end!important}@media(max-width:500px){.tgt-unified-back{width:44px!important;min-width:44px!important;padding:0!important}.tgt-unified-back span{display:none!important}}
+
+        .tgt-gb-score-control{display:flex!important;justify-content:flex-end!important}.tgt-gb-score-control .tgt-gb-score-value{width:88px!important;height:70px!important;border-radius:20px!important;cursor:pointer!important}.tgt-gb-score-value small{font-size:6px!important}.tgt-score-keypad-backdrop{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:flex-end;justify-content:center;background:rgba(2,13,9,.74)}.tgt-score-keypad{width:min(620px,100%);max-height:100dvh;overflow:auto;border-radius:26px 26px 0 0;background:#111714;box-shadow:0 -22px 70px rgba(0,0,0,.42)}.tgt-score-keypad-header{display:grid;grid-template-columns:52px minmax(0,1fr) 68px;align-items:center;gap:10px;padding:14px;color:#fff;background:linear-gradient(135deg,#063f2d,#08784c)}.tgt-score-keypad-header>div{text-align:center}.tgt-score-keypad-header small,.tgt-score-keypad-header span{display:block;color:rgba(255,255,255,.72);font-size:10px;font-weight:900}.tgt-score-keypad-header strong{display:block;margin:4px 0;font-size:19px}.tgt-score-keypad-header output{width:62px;height:62px;display:grid;place-items:center;border-radius:50%;color:#08784c;background:#fff;font-size:28px;font-weight:900}.tgt-score-keypad-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:12px 12px calc(14px + env(safe-area-inset-bottom));background:#161d1a}.tgt-score-keypad-grid button{min-height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;border:1px solid rgba(255,255,255,.08)!important;border-radius:13px!important;color:#fff!important;background:#555959!important;box-shadow:none!important}.tgt-score-keypad-grid button strong{font-size:34px;font-weight:500}.tgt-score-keypad-grid button small{font-size:12px;color:rgba(255,255,255,.78)}.tgt-score-keypad-grid button.is-par{background:#0bb96a!important}.tgt-score-keypad-grid .is-clear,.tgt-score-keypad-grid .is-cancel,.tgt-score-keypad-grid .is-ten-plus{font-size:20px;font-weight:900;background:#353b3d!important}.tgt-score-keypad-grid .is-ten-plus{background:#08784c!important}@media(min-width:620px){.tgt-score-keypad-backdrop{align-items:center;padding:24px}.tgt-score-keypad{border-radius:26px}}
 `}</style>
 
       <section className="marker-card tgt-marker-dashboard-card">
@@ -9787,7 +9864,7 @@ function MarkerDashboard({
         {markerLiveOpen && (
           <section className="tgt-marker-live-panel" role="dialog" aria-modal="true" aria-label="Livescore">
             <header className="tgt-marker-live-header">
-              <button type="button" onClick={() => setMarkerLiveOpen(false)} className="tgt-marker-live-back">‹ Tilbage</button>
+              <button type="button" onClick={() => setMarkerLiveOpen(false)} className="tgt-unified-back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>
               <strong>Live score</strong>
               <button type="button" onClick={loadMarkerLiveScore} className="tgt-marker-live-refresh">Opdatér</button>
             </header>
@@ -10097,9 +10174,7 @@ function MarkerDashboard({
                           </small>
                         </span>
                         <div className="tgt-gb-score-control" role="group" aria-label={`Slag for ${player.name}`}>
-                          <button type="button" aria-label="Træk et slag fra" disabled={Boolean(assignment.rounds?.locked_at)} onClick={(event) => { event.preventDefault(); const current = Number(draftScores[scoreKey] || selectedHoleData?.par || 4); handleScoreChange(player.id, Math.max(1, current - 1)); }}>−</button>
-                          <button type="button" className="tgt-gb-score-value" aria-label="Nulstil score" disabled={Boolean(assignment.rounds?.locked_at)} onClick={(event) => { event.preventDefault(); handleScoreChange(player.id, ""); }}>{draftScores[scoreKey] === "" || draftScores[scoreKey] === undefined ? "–" : draftScores[scoreKey]}<small>SLAG</small></button>
-                          <button type="button" aria-label="Læg et slag til" disabled={Boolean(assignment.rounds?.locked_at)} onClick={(event) => { event.preventDefault(); const current = Number(draftScores[scoreKey] || selectedHoleData?.par || 4); handleScoreChange(player.id, Math.min(20, current + 1)); }}>+</button>
+                          <button type="button" className="tgt-gb-score-value" aria-label={`Indtast score for ${player.name}`} disabled={Boolean(assignment.rounds?.locked_at)} onClick={(event) => { event.preventDefault(); setScoreKeypadTenPlus(false); setScoreKeypadPlayer(player); }}>{draftScores[scoreKey] === "" || draftScores[scoreKey] === undefined ? "–" : draftScores[scoreKey]}<small>TRYK FOR SCORE</small></button>
                         </div>
 
                         <div className="tgt-net-preview">
@@ -10112,6 +10187,18 @@ function MarkerDashboard({
                   })}
                 </div>
 
+                {scoreKeypadPlayer && (() => {
+                  const keypadScoreKey = `${scoreKeypadPlayer.id}-${selectedHole}`;
+                  const par = Number(selectedHoleData?.par ?? 4);
+                  const scores = scoreKeypadTenPlus ? Array.from({ length: 11 }, (_, index) => index + 10) : Array.from({ length: 9 }, (_, index) => index + 1);
+                  const scoreLabel = (score) => score === par ? "Par" : score === par - 1 ? "Birdie" : score === par - 2 ? "Eagle" : score === par + 1 ? "Bogey" : score === par + 2 ? "Double bogey" : "";
+                  const closeKeypad = () => { setScoreKeypadPlayer(null); setScoreKeypadTenPlus(false); };
+                  const chooseScore = (score) => { handleScoreChange(scoreKeypadPlayer.id, score); closeKeypad(); };
+                  return <div className="tgt-score-keypad-backdrop" onClick={closeKeypad}><section className="tgt-score-keypad" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+                    <header className="tgt-score-keypad-header"><button type="button" className="tgt-unified-back" onClick={closeKeypad}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button><div><small>HUL {selectedHole} · PAR {par}</small><strong>{scoreKeypadPlayer.name}</strong><span>HCP {scoreKeypadPlayer.handicap ?? "–"}</span></div><output>{draftScores[keypadScoreKey] === "" || draftScores[keypadScoreKey] === undefined ? "–" : draftScores[keypadScoreKey]}</output></header>
+                    <div className="tgt-score-keypad-grid">{scores.map((score) => <button type="button" key={score} className={score === par ? "is-par" : ""} onClick={() => chooseScore(score)}><strong>{score}</strong>{scoreLabel(score) && <small>{scoreLabel(score)}</small>}</button>)}<button type="button" className="is-clear" onClick={() => { handleScoreChange(scoreKeypadPlayer.id, ""); closeKeypad(); }}>Ryd</button><button type="button" className="is-cancel" onClick={closeKeypad}>Luk</button><button type="button" className="is-ten-plus" onClick={() => setScoreKeypadTenPlus((current) => !current)}>{scoreKeypadTenPlus ? "1-9" : "10+"}</button></div>
+                  </section></div>;
+                })()}
                 {isClosestToPinHole && (
                   <section
                     style={{

@@ -6449,11 +6449,18 @@ function FlightAdmin({ season = ACTIVE_SEASON }) {
 
   function updatePlayerSlot(flightId, slotIndex, playerId) {
     setDrafts((current) => {
-      const playerIds = [...current[flightId].playerIds];
+      const existingDraft = current[flightId] ?? {
+        name: flights.find((flight) => flight.id === flightId)?.name ?? "",
+        flightNumber: flights.find((flight) => flight.id === flightId)?.flight_number ?? "",
+        teeTime: flights.find((flight) => flight.id === flightId)?.tee_time?.slice(0, 5) ?? "",
+        playerIds: ["", "", "", ""],
+      };
+      const playerIds = [...(existingDraft.playerIds ?? ["", "", "", ""] )];
+      while (playerIds.length < 4) playerIds.push("");
       playerIds[slotIndex] = playerId;
       return {
         ...current,
-        [flightId]: { ...current[flightId], playerIds },
+        [flightId]: { ...existingDraft, playerIds },
       };
     });
     setMessage("");
@@ -6509,17 +6516,35 @@ function FlightAdmin({ season = ACTIVE_SEASON }) {
     setErrorMessage("");
 
     try {
+      const allIds = Object.values(drafts).flatMap((currentDraft) =>
+        (currentDraft?.playerIds ?? []).filter(Boolean)
+      );
+      if (new Set(allIds.map(String)).size !== allIds.length) {
+        throw new Error("En spiller er valgt i flere bolde.");
+      }
+
       const saved = await updateFlight({
         flightId,
         name: draft.name,
         flightNumber: draft.flightNumber,
         teeTime: draft.teeTime,
       });
-      setMessage(`${saved.name} er gemt.`);
+
+      // Gem altid spillerpladserne sammen med bolden, før data genindlæses.
+      // Ellers nulstiller reload de valgte navne, fordi kun boldens metadata er gemt.
+      await saveFlightPlayers({
+        roundId: selectedRoundId,
+        flights: flights.map((flight) => ({
+          flightId: flight.id,
+          playerIds: (drafts[flight.id]?.playerIds ?? []).filter(Boolean),
+        })),
+      });
+
+      setMessage(`${saved.name} og spillerpladser er gemt.`);
       await loadFlightData(selectedRoundId);
     } catch (error) {
       console.error("Fejl ved gemning af bold:", error);
-      setErrorMessage(error.message ?? "Bolden kunne ikke gemmes.");
+      setErrorMessage(error.message ?? "Bolden og spillerpladserne kunne ikke gemmes.");
     } finally {
       setSavingFlightId(null);
     }

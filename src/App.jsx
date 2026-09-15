@@ -9598,6 +9598,9 @@ function MarkerDashboard({
         .tgt-gb-score-entry>div:nth-child(2){position:relative!important;z-index:1!important;padding-top:0!important}
         .tgt-gb-player-row:first-child{display:grid!important;visibility:visible!important;opacity:1!important;margin-top:0!important}
         @media(max-width:600px){.tgt-marker-dashboard-card>.tgt-marker-clean-header{grid-template-columns:minmax(0,1fr) 44px!important;padding:10px 12px!important}.tgt-marker-clean-header>div:last-child{display:contents!important}.tgt-gb-score-entry>div:first-child{top:auto!important}.tgt-marker-menu{top:60px}}
+
+        /* FINAL LIVE DATA SYNC: Mit TGT and marker use the same active-round source */
+        .tgt-marker-live-panel,.tgt-live-fullscreen{overscroll-behavior:contain}
 `}</style>
 
       <section className="marker-card tgt-marker-dashboard-card">

@@ -1009,8 +1009,15 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         (round) => round.round_type === "individual_final"
       );
 
-      const currentLiveRound = [...(roundRows ?? [])]
-        .filter((round) => String(round.status ?? "").trim().toLowerCase() === "live")
+      const liveRoundCandidates = [...(roundRows ?? [])].filter((round) => {
+        const status = String(round.status ?? "").trim().toLowerCase();
+        const mode = String(round.live_leaderboard_mode ?? "none").trim().toLowerCase();
+        // Explicit live status wins. A published scoring round with a live mode also
+        // counts as live, so public, Mit TGT and marker never disagree.
+        return status === "live" ||
+          (["ready", "submitted"].includes(status) && ["individual", "team", "both"].includes(mode));
+      });
+      const currentLiveRound = liveRoundCandidates
         .sort((a, b) => Number(b.round_number ?? 0) - Number(a.round_number ?? 0))[0] ?? null;
 
       let [currentLiveData, currentTeamData] = currentLiveRound
@@ -1026,16 +1033,20 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
           ])
         : [null, null];
 
-      if (currentLiveData?.round) {
+      if (currentLiveRound) {
         currentLiveData = {
-          ...currentLiveData,
+          ...(currentLiveData ?? {}),
+          leaderboard: currentLiveData?.leaderboard ?? [],
+          holes: currentLiveData?.holes ?? [],
           round: {
-            ...currentLiveData.round,
-            id: currentLiveData.round.id ?? currentLiveRound?.id,
+            ...(currentLiveData?.round ?? {}),
+            id: currentLiveData?.round?.id ?? currentLiveRound.id,
+            name: currentLiveData?.round?.name ?? currentLiveRound.name ?? `Runde ${currentLiveRound.round_number}`,
+            roundNumber: currentLiveData?.round?.roundNumber ?? currentLiveRound.round_number,
             status: "live",
-            liveLeaderboardMode: currentLiveRound?.live_leaderboard_mode ??
-              currentLiveData.round.liveLeaderboardMode ??
-              currentLiveData.round.live_leaderboard_mode ??
+            liveLeaderboardMode: currentLiveRound.live_leaderboard_mode ??
+              currentLiveData?.round?.liveLeaderboardMode ??
+              currentLiveData?.round?.live_leaderboard_mode ??
               "individual",
           },
         };
@@ -2450,7 +2461,7 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:64px!important;scroll-margin-bottom:140px!important}
         .tgt-mit-tgt-universe .tgt-public-login-choice,.tgt-mit-tgt-universe .tgt-menu-button,.tgt-player-menu-button{display:none!important}
         .tgt-mit-tgt-universe .tgt-public-topbar{justify-content:flex-start!important;background:linear-gradient(135deg,#075238,#0a6845)!important}
-        .tgt-mit-tgt-universe .tgt-public-topbar:after{content:"MIT TGT"!important;left:auto!important;right:16px!important;transform:none!important;color:#fff!important;font:900 10px/1 system-ui,sans-serif!important;letter-spacing:.16em!important}
+        .tgt-mit-tgt-universe .tgt-public-topbar:after{content:none!important;display:none!important}
         .tgt-mit-tgt-universe .tgt-wordmark,.tgt-mit-tgt-universe .tgt-wordmark *,.tgt-player-appbar,.tgt-player-appbar *{color:#fff!important}
         .tgt-mit-tgt-universe .tgt-wordmark-mark,.tgt-player-brandmark{border-color:rgba(255,255,255,.46)!important;color:#fff!important;background:rgba(255,255,255,.10)!important}
         .tgt-mit-tgt-universe .eyebrow:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-player-shell .eyebrow{color:#168454!important}
@@ -2767,6 +2778,32 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         .tgt-marker-live-panel .position-badge.position-1{color:#513700!important;background:linear-gradient(145deg,#fff0ae,#d7ad4f 55%,#b77b28)!important}
         .tgt-marker-live-panel .position-badge.position-2{color:#33424b!important;background:#d9e0e4!important}
         .tgt-marker-live-panel .position-badge.position-3{color:#5c3214!important;background:#dca56f!important}
+
+        /* Split individual/team live and make authenticated exit controls explicit */
+        .tgt-auth-header-actions{display:flex!important;align-items:center!important;gap:6px!important;flex:0 0 auto!important}
+        .tgt-auth-home{min-height:40px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.48)!important;border-radius:999px!important;color:#fff!important;background:transparent!important;font-size:10px!important;font-weight:1000!important;letter-spacing:.12em!important;box-shadow:none!important}
+        .tgt-live-fullscreen-open .tgt-app-back,.tgt-panel-fullscreen-open .tgt-app-back{display:inline-flex!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
+        .tgt-marker-live-toggle button:disabled{opacity:.42!important;cursor:not-allowed!important;background:#edf2ee!important;color:#75847b!important}
+        @media(max-width:500px){.tgt-auth-home{min-height:36px!important;padding:0 8px!important;font-size:8px!important}.tgt-auth-header-actions{gap:2px!important}}
+
+        /* FINAL UNIFIED LIVE: same green visual language publicly and when logged in */
+        .tgt-live-fullscreen-header,.tgt-live-fullscreen-topline{
+          filter:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+          color:#fff!important;background:linear-gradient(135deg,#075238,#0a6845)!important;
+        }
+        .tgt-live-fullscreen-header strong{color:#fff!important;font-family:system-ui,sans-serif!important;font-weight:1000!important}
+        .tgt-live-back-button{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;min-height:42px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.52)!important;border-radius:12px!important;color:#fff!important;background:#075238!important;box-shadow:none!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
+        .tgt-live-login-button{min-height:42px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.52)!important;border-radius:999px!important;color:#fff!important;background:transparent!important;font-size:10px!important;font-weight:1000!important;letter-spacing:.12em!important}
+        .tgt-live-view-toggle{border-color:rgba(255,255,255,.25)!important;background:#06452f!important}
+        .tgt-live-view-toggle button{color:rgba(255,255,255,.76)!important;background:transparent!important;border:0!important}
+        .tgt-live-view-toggle button.active{color:#fff!important;background:#168454!important;box-shadow:none!important}
+        .tgt-live-gamebook,.tgt-live-team-leaderboard{background:#f4f7f5!important}
+        .tgt-live-mobile-card,.tgt-live-team-leaderboard tbody tr{background:#fff!important;border-color:#dce8e0!important;box-shadow:0 6px 18px rgba(7,63,44,.07)!important}
+        .tgt-live-mobile-card small,.tgt-live-player-meta{color:#688077!important}
+        .tgt-live-mobile-card.is-open{border-color:#168454!important}
+        .tgt-split-scorecard{background:#fff!important;border-color:#d5e4da!important}
+        .tgt-live-fullscreen-open .tgt-public-topbar{display:none!important}
+        @media(max-width:600px){.tgt-live-fullscreen-topline{grid-template-columns:auto 1fr auto!important;padding:10px!important}.tgt-live-back-button,.tgt-live-login-button{min-height:38px!important;padding:0 9px!important}.tgt-live-fullscreen-header strong{font-size:16px!important}.tgt-live-view-toggle{margin:0 10px 10px!important;border-radius:14px!important}}
 `}</style>
 
       <header className="tgt-public-topbar">
@@ -2817,7 +2854,10 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
           ☰
         </button>}
         </div>
-        {isAuthenticated && <button type="button" className="tgt-app-burger" aria-label="Åbn menu" onClick={()=>onPortalNavigate?.("menu")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>}
+        {isAuthenticated && <div className="tgt-auth-header-actions">
+          <button type="button" className="tgt-auth-home" onClick={()=>onPortalNavigate?.("profile")}>MIT TGT</button>
+          <button type="button" className="tgt-app-burger" aria-label="Åbn menu" onClick={()=>onPortalNavigate?.("menu")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        </div>}
       </header>
 
       {!isAuthenticated && menuOpen && (
@@ -2950,7 +2990,7 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
                 Tilbage
               </button>
               <strong>Live score</strong>
-              <span className="tgt-live-header-balance" aria-hidden="true" />
+              <button type="button" className="tgt-live-login-button" onClick={()=>onOpenPlayerLogin?.()}>MIT TGT</button>
             </div>
             <nav className="tgt-live-view-toggle" aria-label="Vælg livestilling">
               <button type="button" className={liveView === "individual" ? "active" : ""} onClick={() => setLiveView("individual")}>Individuel</button>
@@ -3422,7 +3462,7 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
                           </td>
                           <td>
                             <span className="player-name">{player.playerName}</span>
-                            <small className="tgt-live-player-meta">HCP {player.handicap ?? "–"} · SPH {getPlayerPlayingHandicap(player, liveData?.round) ?? "–"}</small>
+                            <small className="tgt-live-player-meta">Tryk for at se scorekort</small>
                           </td>
                           <td className="number-column tgt-live-gross-score">{player.holesPlayed === 0 ? "–" : player.grossStrokes}</td>
                           <td className="number-column final-score tgt-live-to-par" style={getLeaderboardScoreStyle(player.holesPlayed === 0 ? 0 : player.scoreToPar)}>{player.holesPlayed === 0 ? "E" : formatScore(player.scoreToPar)}</td>
@@ -3925,7 +3965,7 @@ function MitTgtMenuPage({ onNavigate, onLogout }) {
         .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:64px!important;scroll-margin-bottom:140px!important}
         .tgt-mit-tgt-universe .tgt-public-login-choice,.tgt-mit-tgt-universe .tgt-menu-button,.tgt-player-menu-button{display:none!important}
         .tgt-mit-tgt-universe .tgt-public-topbar{justify-content:flex-start!important;background:linear-gradient(135deg,#075238,#0a6845)!important}
-        .tgt-mit-tgt-universe .tgt-public-topbar:after{content:"MIT TGT"!important;left:auto!important;right:16px!important;transform:none!important;color:#fff!important;font:900 10px/1 system-ui,sans-serif!important;letter-spacing:.16em!important}
+        .tgt-mit-tgt-universe .tgt-public-topbar:after{content:none!important;display:none!important}
         .tgt-mit-tgt-universe .tgt-wordmark,.tgt-mit-tgt-universe .tgt-wordmark *,.tgt-player-appbar,.tgt-player-appbar *{color:#fff!important}
         .tgt-mit-tgt-universe .tgt-wordmark-mark,.tgt-player-brandmark{border-color:rgba(255,255,255,.46)!important;color:#fff!important;background:rgba(255,255,255,.10)!important}
         .tgt-mit-tgt-universe .eyebrow:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-player-shell .eyebrow{color:#168454!important}
@@ -4378,7 +4418,7 @@ function PlayerDashboard({ session, onLogout, onStartScoring, onNavigate, initia
         .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:64px!important;scroll-margin-bottom:140px!important}
         .tgt-mit-tgt-universe .tgt-public-login-choice,.tgt-mit-tgt-universe .tgt-menu-button,.tgt-player-menu-button{display:none!important}
         .tgt-mit-tgt-universe .tgt-public-topbar{justify-content:flex-start!important;background:linear-gradient(135deg,#075238,#0a6845)!important}
-        .tgt-mit-tgt-universe .tgt-public-topbar:after{content:"MIT TGT"!important;left:auto!important;right:16px!important;transform:none!important;color:#fff!important;font:900 10px/1 system-ui,sans-serif!important;letter-spacing:.16em!important}
+        .tgt-mit-tgt-universe .tgt-public-topbar:after{content:none!important;display:none!important}
         .tgt-mit-tgt-universe .tgt-wordmark,.tgt-mit-tgt-universe .tgt-wordmark *,.tgt-player-appbar,.tgt-player-appbar *{color:#fff!important}
         .tgt-mit-tgt-universe .tgt-wordmark-mark,.tgt-player-brandmark{border-color:rgba(255,255,255,.46)!important;color:#fff!important;background:rgba(255,255,255,.10)!important}
         .tgt-mit-tgt-universe .eyebrow:not(.tgt-hall-fullscreen *):not(.tgt-hall-panel *):not(.tgt-hall-card *),.tgt-player-shell .eyebrow{color:#168454!important}
@@ -8821,23 +8861,34 @@ function MarkerDashboard({
       if (seasonRoundsError) throw seasonRoundsError;
       const teamFinalRound = (seasonRounds ?? []).find((round) => round.round_type === "team_final");
       const individualFinalRound = (seasonRounds ?? []).find((round) => round.round_type === "individual_final");
-      const [individualData, teamData, seasonStandingsResult, teamHistoryResult] = await Promise.all([
+      const teamEnabled = Boolean(assignment.rounds?.team_enabled) || ["team", "both"].includes(mode);
+      const [individualResult, teamResult, seasonStandingsResult, teamHistoryResult] = await Promise.allSettled([
         getLiveRoundLeaderboard({ season, roundId: assignment.round_id }),
-        getTeamLeaderboard({ season, roundNumber: assignment.rounds.round_number }),
+        teamEnabled
+          ? getTeamLeaderboard({ season, roundNumber: assignment.rounds.round_number })
+          : Promise.resolve(null),
         supabase
           .from("season_individual_standings")
           .select("player_id, player_name, counting_score")
           .eq("season", season),
-        supabase
-          .from("team_round_results")
-          .select(`team_id, round_number, score, teams (name), tournaments!inner (season)`)
-          .eq("tournaments.season", season)
-          .not("score", "is", null),
+        teamEnabled
+          ? supabase
+              .from("team_round_results")
+              .select(`team_id, round_number, score, teams (name), tournaments!inner (season)`)
+              .eq("tournaments.season", season)
+              .not("score", "is", null)
+          : Promise.resolve({ data: [], error: null }),
       ]);
-      if (seasonStandingsResult.error) throw seasonStandingsResult.error;
-      if (teamHistoryResult.error) throw teamHistoryResult.error;
+      if (individualResult.status === "rejected") throw individualResult.reason;
+      const individualData = individualResult.value;
+      const teamData = teamResult.status === "fulfilled" ? teamResult.value : null;
+      const individualStandingsResponse = seasonStandingsResult.status === "fulfilled" ? seasonStandingsResult.value : { data: [], error: null };
+      const teamHistoryResponse = teamHistoryResult.status === "fulfilled" ? teamHistoryResult.value : { data: [], error: null };
+      if (individualStandingsResponse.error) throw individualStandingsResponse.error;
+      // Holdfejl holdes isoleret fra individuel live. Holdfanen viser sin egen tomme status.
+      const safeTeamHistory = teamHistoryResponse.error ? [] : (teamHistoryResponse.data ?? []);
 
-      let individualTopFive = sortStandings(seasonStandingsResult.data ?? []).slice(0, 5).map((player) => ({
+      let individualTopFive = sortStandings(individualStandingsResponse.data ?? []).slice(0, 5).map((player) => ({
         id: player.player_id,
         name: player.player_name,
         score: player.counting_score,
@@ -8864,7 +8915,7 @@ function MarkerDashboard({
       }
 
       const historyByTeam = {};
-      (teamHistoryResult.data ?? []).forEach((result) => {
+      safeTeamHistory.forEach((result) => {
         historyByTeam[result.team_id] ??= {
           id: result.team_id,
           name: result.teams?.name ?? "Ukendt hold",
@@ -8892,7 +8943,7 @@ function MarkerDashboard({
             player,
           ])
         );
-        individualTopFive = (seasonStandingsResult.data ?? [])
+        individualTopFive = (individualStandingsResponse.data ?? [])
           .map((player) => {
             const livePlayer = liveIndividualById.get(String(player.player_id));
             const holesPlayed = Number(livePlayer?.holesPlayed ?? 0);
@@ -9697,6 +9748,13 @@ function MarkerDashboard({
         .tgt-marker-live-panel .position-badge.position-1{color:#513700!important;background:linear-gradient(145deg,#fff0ae,#d7ad4f 55%,#b77b28)!important}
         .tgt-marker-live-panel .position-badge.position-2{color:#33424b!important;background:#d9e0e4!important}
         .tgt-marker-live-panel .position-badge.position-3{color:#5c3214!important;background:#dca56f!important}
+
+        /* Split individual/team live and make authenticated exit controls explicit */
+        .tgt-auth-header-actions{display:flex!important;align-items:center!important;gap:6px!important;flex:0 0 auto!important}
+        .tgt-auth-home{min-height:40px!important;padding:0 12px!important;border:1px solid rgba(255,255,255,.48)!important;border-radius:999px!important;color:#fff!important;background:transparent!important;font-size:10px!important;font-weight:1000!important;letter-spacing:.12em!important;box-shadow:none!important}
+        .tgt-live-fullscreen-open .tgt-app-back,.tgt-panel-fullscreen-open .tgt-app-back{display:inline-flex!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
+        .tgt-marker-live-toggle button:disabled{opacity:.42!important;cursor:not-allowed!important;background:#edf2ee!important;color:#75847b!important}
+        @media(max-width:500px){.tgt-auth-home{min-height:36px!important;padding:0 8px!important;font-size:8px!important}.tgt-auth-header-actions{gap:2px!important}}
 `}</style>
 
       <section className="marker-card tgt-marker-dashboard-card">
@@ -9711,7 +9769,7 @@ function MarkerDashboard({
           {markerMenuOpen && <div className="tgt-marker-menu" role="menu">
             {playerId && onBackToPlayer && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);onBackToPlayer();}}>Tilbage til Mit TGT</button>}
             {assignment && availableAssignments.length > 1 && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);setAssignment(null);setSelectedRoundNumber(null);}}>Skift runde</button>}
-            {assignment && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);setMarkerLiveView(assignment.rounds?.live_leaderboard_mode === "team" ? "team" : "individual");setMarkerLiveOpen(true);loadMarkerLiveScore();}}>Se livescore</button>}
+            {assignment && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);setMarkerLiveView(assignment.rounds?.live_leaderboard_mode === "team" ? "team" : "individual");setMarkerLiveError("");setMarkerLiveOpen(true);loadMarkerLiveScore();}}>Se livescore</button>}
             <button type="button" role="menuitem" onClick={onLogout}>Log ud</button>
           </div>}
         </div>
@@ -9736,7 +9794,7 @@ function MarkerDashboard({
             <div className="tgt-marker-live-scroll">
               <nav className="tgt-marker-live-toggle" aria-label="Vælg livestilling">
                 <button type="button" className={markerLiveView === "individual" ? "active" : ""} onClick={() => setMarkerLiveView("individual")}>Individuel</button>
-                <button type="button" className={markerLiveView === "team" ? "active" : ""} onClick={() => setMarkerLiveView("team")}>Hold</button>
+                <button type="button" className={markerLiveView === "team" ? "active" : ""} onClick={() => setMarkerLiveView("team")} disabled={!assignment?.rounds?.team_enabled && !["team", "both"].includes(assignment?.rounds?.live_leaderboard_mode)}>Hold</button>
               </nav>
               {markerLiveLoading && <div className="status-box">Henter livescore...</div>}
               {markerLiveError && <div className="error-box">{markerLiveError}</div>}
@@ -9772,7 +9830,7 @@ function MarkerDashboard({
                   </tbody>
                 </table>
                 {(markerLiveView === "individual" ? markerIndividualLeaderboard : markerTeamLeaderboard).length === 0 && (
-                  <div className="status-box">Der er endnu ingen livescore.</div>
+                  <div className="status-box">{markerLiveView === "individual" ? "Der er endnu ingen individuelle scores." : "Holdturneringen er ikke aktiveret for denne runde."}</div>
                 )}
                 </div>
               )}

@@ -9531,6 +9531,28 @@ function MarkerDashboard({
         .tgt-marker-dashboard-card>section:last-child{margin-bottom:calc(28px + env(safe-area-inset-bottom))!important}
         .tgt-marker-player-back{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important}
         .tgt-marker-player-back span{font-size:25px!important;line-height:1!important}
+
+        /* GAMEBOOK-INSPIRED MARKER UI: simple, fast and score-first */
+        .tgt-marker-dashboard-card{max-width:760px!important;border-radius:22px!important;background:#f1f4f1!important}
+        .tgt-marker-dashboard-card>.marker-header{position:sticky!important;top:0!important;z-index:20!important;display:grid!important;grid-template-columns:1fr auto!important;min-height:76px!important;padding:12px 16px!important;background:#fff!important;color:#113c2d!important;border-bottom:1px solid #dce4de!important;box-shadow:0 4px 18px rgba(7,63,44,.08)!important}
+        .tgt-marker-dashboard-card>.marker-header h1{margin:2px 0!important;color:#113c2d!important;font:900 24px/1.05 system-ui,sans-serif!important}.tgt-marker-dashboard-card>.marker-header .eyebrow{color:#168454!important}.tgt-marker-dashboard-card>.marker-header .description{display:none!important}
+        .tgt-marker-dashboard-card>.marker-header .logout-button{min-height:38px!important;padding:0 11px!important;border:1px solid #d3dfd7!important;border-radius:10px!important;color:#0b6543!important;background:#fff!important;font-size:11px!important;box-shadow:none!important}
+        .tgt-marker-round-strip{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;border-bottom:1px solid #d7e1da!important;background:#087a4d!important;color:#fff!important}
+        .tgt-marker-round-strip>div{min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px;border-right:1px solid rgba(255,255,255,.18);text-align:center}.tgt-marker-round-strip>div:last-child{border-right:0}.tgt-marker-round-strip span{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;opacity:.75}.tgt-marker-round-strip strong{font-size:16px;line-height:1.1;color:#fff!important}
+        .tgt-marker-top-five-wrap{display:none!important}
+        .tgt-gb-score-entry{margin:0!important;padding:0 0 calc(110px + env(safe-area-inset-bottom))!important;border:0!important;border-radius:0!important;background:#f1f4f1!important}
+        .tgt-gb-score-entry>div:first-child{position:sticky;top:76px;z-index:15;display:grid!important;grid-template-columns:1fr auto!important;align-items:center!important;padding:13px 16px!important;background:#087a4d!important;color:#fff!important;border-bottom:1px solid rgba(255,255,255,.18)!important}
+        .tgt-gb-score-entry>div:first-child .eyebrow{margin:0!important;color:rgba(255,255,255,.72)!important}.tgt-gb-score-entry>div:first-child h2{margin:2px 0!important;color:#fff!important;font:1000 32px/1 system-ui,sans-serif!important}.tgt-gb-score-entry>div:first-child p{color:#fff!important;font-weight:800!important}.tgt-gb-score-entry>div:first-child select{min-width:108px!important;border:1px solid rgba(255,255,255,.45)!important;color:#fff!important;background:#07653f!important}
+        .tgt-gb-score-entry>div:nth-child(2){gap:0!important;margin-top:0!important}
+        .tgt-gb-player-row{grid-template-columns:44px minmax(0,1fr) 152px!important;gap:10px!important;min-height:110px!important;padding:13px 14px!important;border:0!important;border-bottom:1px solid #dfe5e1!important;border-radius:0!important;background:#fff!important}
+        .tgt-gb-player-row>span:first-child{width:34px!important;height:34px!important;color:#0b6543!important;background:#eaf5ee!important}
+        .tgt-gb-player-row>span:nth-child(2) strong{font-size:16px!important;color:#113c2d!important}.tgt-gb-player-row>span:nth-child(2) small{display:block;margin-top:5px;color:#688077!important;font-size:10px!important;line-height:1.25!important}
+        .tgt-gb-score-control{display:grid;grid-template-columns:42px 62px 42px;align-items:center;justify-content:end;gap:3px}
+        .tgt-gb-score-control>button{width:42px!important;height:48px!important;min-height:48px!important;padding:0!important;border:1px solid #cfdcd3!important;border-radius:13px!important;color:#0b6543!important;background:#f4f8f5!important;font-size:28px!important;font-weight:800!important;box-shadow:none!important}
+        .tgt-gb-score-control .tgt-gb-score-value{width:62px!important;height:62px!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;border:0!important;border-radius:50%!important;color:#fff!important;background:#16ad69!important;box-shadow:0 5px 12px rgba(7,99,61,.22)!important;font-size:27px!important;line-height:.85!important}.tgt-gb-score-value small{display:block;margin-top:6px;color:rgba(255,255,255,.76)!important;font-size:7px!important;letter-spacing:.12em!important}
+        .tgt-gb-player-row>.tgt-net-preview{grid-column:2/-1!important;display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;margin:0!important;padding:0!important}.tgt-net-preview>span{min-height:42px!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;border:0!important;border-radius:9px!important;background:#eef5f0!important}.tgt-net-preview small{font-size:8px!important;color:#688077!important}.tgt-net-preview strong{font-size:14px!important;color:#0b6543!important}
+        .tgt-gb-score-entry>div:last-child{position:sticky;bottom:0;z-index:14;padding:10px 12px calc(10px + env(safe-area-inset-bottom))!important;margin-top:0!important;background:rgba(255,255,255,.96)!important;border-top:1px solid #d7e1da!important;box-shadow:0 -8px 24px rgba(7,63,44,.10)!important}.tgt-gb-score-entry>div:last-child button:last-child{background:#087a4d!important}
+        @media(max-width:600px){.tgt-ops-shell{padding:0!important;background:#f1f4f1!important}.tgt-ops-shell>.marker-card{border:0!important;border-radius:0!important;box-shadow:none!important}.tgt-marker-dashboard-card>.marker-header{grid-template-columns:1fr!important;padding:10px 12px!important}.tgt-marker-dashboard-card>.marker-header>div:last-child{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;margin-top:8px}.tgt-marker-dashboard-card>.marker-header .logout-button{width:100%!important}.tgt-gb-score-entry>div:first-child{top:124px}.tgt-gb-player-row{grid-template-columns:34px minmax(0,1fr) 142px!important;padding:12px 9px!important}.tgt-gb-score-control{grid-template-columns:38px 58px 38px}.tgt-gb-score-control>button{width:38px!important}.tgt-gb-score-control .tgt-gb-score-value{width:58px!important;height:58px!important}.tgt-marker-round-strip strong{font-size:14px!important}}
 `}</style>
 
       <section className="marker-card tgt-marker-dashboard-card">
@@ -9741,20 +9763,12 @@ function MarkerDashboard({
           !assignmentError &&
           assignment && (
             <>
-              <div className="tgt-marker-kpis">
-                <div className="tgt-marker-kpi"><span>Dato</span><strong>{formatDate(assignment.rounds?.played_at)}</strong></div>
-                <div className="tgt-marker-kpi"><span>Runde</span><strong>{assignment.rounds?.round_number}</strong></div>
-                <div className="tgt-marker-kpi"><span>Starttid</span><strong>{formatTime(assignment.tee_time)}</strong></div>
-                <div className="tgt-marker-kpi"><span>Tee</span><strong>{markerTee?.tee_name ?? assignment.rounds?.tee_name ?? "Ikke valgt"}</strong></div>
-                <div className="tgt-marker-kpi"><span>Samlet leaderboard</span><strong>{assignment.rounds?.live_leaderboard_mode === "individual"
-                  ? "Individuel"
-                  : assignment.rounds?.live_leaderboard_mode === "team"
-                    ? "Hold"
-                    : assignment.rounds?.live_leaderboard_mode === "both"
-                      ? "Begge"
-                      : "Fra"}</strong></div>
-                <div className="tgt-marker-kpi tgt-marker-progress"><span>Huller gemt</span><strong>{completedHoles} / 18 huller</strong></div>
-              </div>
+              <section className="tgt-marker-round-strip">
+                <div><span>Runde</span><strong>{assignment.rounds?.round_number}</strong></div>
+                <div><span>Start</span><strong>{formatTime(assignment.tee_time)}</strong></div>
+                <div><span>Tee</span><strong>{markerTee?.tee_name ?? assignment.rounds?.tee_name ?? "–"}</strong></div>
+                <div><span>Gemt</span><strong>{completedHoles}/18</strong></div>
+              </section>
 
               {assignment.rounds?.locked_at && (
                 <div className="error-box" style={{ margin: "20px 20px 0" }}>
@@ -9766,9 +9780,9 @@ function MarkerDashboard({
                 </div>
               )}
 
-              <section
+              <section className="tgt-gb-score-entry"
                 style={{
-                  marginTop: 28,
+                  marginTop: 18,
                   padding: 20,
                   border:
                     "1px solid rgba(16, 72, 51, 0.2)",
@@ -9873,6 +9887,7 @@ function MarkerDashboard({
                     return (
                       <label
                         key={player.id}
+                        className="tgt-gb-player-row"
                         style={{
                           display: "grid",
                           gridTemplateColumns:
@@ -9919,51 +9934,17 @@ function MarkerDashboard({
                             {` · Slag på hullet ${allocatedStrokes}`}
                           </small>
                         </span>
-
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min="1"
-                          max="20"
-                          value={
-                            draftScores[
-                              scoreKey
-                            ] ?? ""
-                          }
-                          onChange={(event) =>
-                            handleScoreChange(
-                              player.id,
-                              event.target.value
-                            )
-                          }
-                          disabled={Boolean(assignment.rounds?.locked_at)}
-                          placeholder="Slag"
-                          style={{
-                            width: "100%",
-                            padding: 12,
-                            borderRadius: 10,
-                            border:
-                              "1px solid #bdc9c1",
-                            textAlign: "center",
-                            fontSize: 18,
-                            fontWeight: 800,
-                          }}
-                        />
+                        <div className="tgt-gb-score-control" role="group" aria-label={`Slag for ${player.name}`}>
+                          <button type="button" aria-label="Træk et slag fra" disabled={Boolean(assignment.rounds?.locked_at)} onClick={(event) => { event.preventDefault(); const current = Number(draftScores[scoreKey] || selectedHoleData?.par || 4); handleScoreChange(player.id, Math.max(1, current - 1)); }}>−</button>
+                          <button type="button" className="tgt-gb-score-value" aria-label="Nulstil score" disabled={Boolean(assignment.rounds?.locked_at)} onClick={(event) => { event.preventDefault(); handleScoreChange(player.id, ""); }}>{draftScores[scoreKey] === "" || draftScores[scoreKey] === undefined ? "–" : draftScores[scoreKey]}<small>SLAG</small></button>
+                          <button type="button" aria-label="Læg et slag til" disabled={Boolean(assignment.rounds?.locked_at)} onClick={(event) => { event.preventDefault(); const current = Number(draftScores[scoreKey] || selectedHoleData?.par || 4); handleScoreChange(player.id, Math.min(20, current + 1)); }}>+</button>
+                        </div>
 
                         <div className="tgt-net-preview">
-                          <span><small>SLAG</small><strong>{"●".repeat(allocatedStrokes) || "–"}</strong></span>
+                          <span><small>HCP-SLAG</small><strong>{"●".repeat(allocatedStrokes) || "–"}</strong></span>
                           <span><small>NETTO</small><strong>{draftScores[scoreKey] === "" || draftScores[scoreKey] === undefined ? "–" : Number(draftScores[scoreKey]) - allocatedStrokes}</strong></span>
                           <span><small>RESULTAT</small><strong>{draftScores[scoreKey] === "" || draftScores[scoreKey] === undefined ? "–" : formatScore(Number(draftScores[scoreKey]) - allocatedStrokes - Number(selectedHoleData?.par ?? 0))}</strong></span>
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleToggleDamebajer(player); }}
-                          disabled={Boolean(assignment.rounds?.locked_at) || savingDamebajerId === player.id}
-                          style={{ gridColumn: "1 / -1", width: "100%", minHeight: 42, borderRadius: 10, border: "1px solid #168454", background: damebajere.some((entry) => entry.player_id === player.id && Number(entry.hole_number) === Number(selectedHole)) ? "linear-gradient(135deg, #eaf5ee, #168454)" : "#f7faf7", color: "#113c2d", fontWeight: 900, cursor: "pointer" }}
-                        >
-                          {savingDamebajerId === player.id ? "Gemmer..." : damebajere.some((entry) => entry.player_id === player.id && Number(entry.hole_number) === Number(selectedHole)) ? "🍺 Damebajer registreret ✓" : "🍺 Registrér damebajer"}
-                        </button>
                       </label>
                     );
                   })}

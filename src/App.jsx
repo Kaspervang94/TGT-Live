@@ -8714,6 +8714,7 @@ function MarkerDashboard({
   const [closestError, setClosestError] =
     useState("");
   const [markerLiveOpen, setMarkerLiveOpen] = useState(false);
+  const [markerMenuOpen, setMarkerMenuOpen] = useState(false);
   const [markerLiveView, setMarkerLiveView] = useState("individual");
   const [markerLiveData, setMarkerLiveData] = useState(null);
   const [markerTeamData, setMarkerTeamData] = useState(null);
@@ -9237,7 +9238,12 @@ function MarkerDashboard({
       };
     });
 
-    const scoresToDelete = scoreChanges.filter((score) => score.isEmpty);
+    const scoresToDelete = scoreChanges.filter((score) =>
+      score.isEmpty && scores.some((savedScore) =>
+        savedScore.player_id === score.playerId &&
+        Number(savedScore.hole_number) === Number(selectedHole)
+      )
+    );
     const scoresToSave = scoreChanges
       .filter((score) => !score.isEmpty)
       .map(({ playerId, strokes }) => ({ playerId, strokes }));
@@ -9281,7 +9287,10 @@ function MarkerDashboard({
       }
     } catch (error) {
       console.error("Fejl ved gemning eller sletning af scores:", error);
-      setSaveError(error.message ?? "Scorerne kunne ikke gemmes eller slettes.");
+      const message = error.message ?? "Scorerne kunne ikke gemmes eller slettes.";
+      setSaveError(message.includes("row-level security")
+        ? "Markørlogin mangler adgang til at gemme scores. Kør fix_scores_rls.sql i Supabase SQL Editor."
+        : message);
     } finally {
       setSavingScores(false);
     }
@@ -9578,63 +9587,34 @@ function MarkerDashboard({
         .tgt-gb-player-row>.tgt-net-preview{grid-column:2/-1!important;display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;margin:0!important;padding:0!important}.tgt-net-preview>span{min-height:42px!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;border:0!important;border-radius:9px!important;background:#eef5f0!important}.tgt-net-preview small{font-size:8px!important;color:#688077!important}.tgt-net-preview strong{font-size:14px!important;color:#0b6543!important}
         .tgt-gb-score-entry>div:last-child{position:sticky;bottom:0;z-index:14;padding:10px 12px calc(10px + env(safe-area-inset-bottom))!important;margin-top:0!important;background:rgba(255,255,255,.96)!important;border-top:1px solid #d7e1da!important;box-shadow:0 -8px 24px rgba(7,63,44,.10)!important}.tgt-gb-score-entry>div:last-child button:last-child{background:#087a4d!important}
         @media(max-width:600px){.tgt-ops-shell{padding:0!important;background:#f1f4f1!important}.tgt-ops-shell>.marker-card{border:0!important;border-radius:0!important;box-shadow:none!important}.tgt-marker-dashboard-card>.marker-header{grid-template-columns:1fr!important;padding:10px 12px!important}.tgt-marker-dashboard-card>.marker-header>div:last-child{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;margin-top:8px}.tgt-marker-dashboard-card>.marker-header .logout-button{width:100%!important}.tgt-gb-score-entry>div:first-child{top:124px}.tgt-gb-player-row{grid-template-columns:34px minmax(0,1fr) 142px!important;padding:12px 9px!important}.tgt-gb-score-control{grid-template-columns:38px 58px 38px}.tgt-gb-score-control>button{width:38px!important}.tgt-gb-score-control .tgt-gb-score-value{width:58px!important;height:58px!important}.tgt-marker-round-strip strong{font-size:14px!important}}
+
+        /* Final marker shell: score only, menu behind burger, first player always visible */
+        .tgt-marker-dashboard-card>.tgt-marker-clean-header{position:relative!important;top:auto!important;z-index:40!important;display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;align-items:center!important;min-height:72px!important;padding:12px 14px!important;background:#fff!important;color:#113c2d!important;box-shadow:none!important}
+        .tgt-marker-clean-header h1{color:#113c2d!important}.tgt-marker-clean-header .eyebrow{color:#168454!important}
+        .tgt-marker-burger{width:44px!important;height:44px!important;display:grid!important;place-items:center!important;padding:0!important;border:0!important;border-radius:0!important;color:#075238!important;background:transparent!important;box-shadow:none!important}.tgt-marker-burger svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round}
+        .tgt-marker-menu{position:absolute;right:10px;top:62px;z-index:1000;width:min(280px,calc(100vw - 20px));display:grid;gap:7px;padding:10px;border:1px solid #d7e6dc;border-radius:16px;background:#fff;box-shadow:0 18px 45px rgba(7,63,44,.22)}
+        .tgt-marker-menu button{width:100%!important;min-height:48px!important;padding:0 14px!important;border:0!important;border-radius:11px!important;color:#113c2d!important;background:#eef5f0!important;text-align:left!important;font-size:14px!important;font-weight:900!important;box-shadow:none!important}.tgt-marker-menu button:last-child{color:#b92f37!important;background:#fff0f1!important}
+        .tgt-gb-score-entry>div:first-child{position:relative!important;top:auto!important}
+        .tgt-gb-score-entry>div:nth-child(2){position:relative!important;z-index:1!important;padding-top:0!important}
+        .tgt-gb-player-row:first-child{display:grid!important;visibility:visible!important;opacity:1!important;margin-top:0!important}
+        @media(max-width:600px){.tgt-marker-dashboard-card>.tgt-marker-clean-header{grid-template-columns:minmax(0,1fr) 44px!important;padding:10px 12px!important}.tgt-marker-clean-header>div:last-child{display:contents!important}.tgt-gb-score-entry>div:first-child{top:auto!important}.tgt-marker-menu{top:60px}}
 `}</style>
 
       <section className="marker-card tgt-marker-dashboard-card">
-        <div className="marker-header">
+        <div className="marker-header tgt-marker-clean-header">
           <div>
-            <p className="eyebrow">
-              TGT markørområde
-            </p>
-
-            <h1>
-              {assignment?.name ??
-                "Henter bold..."}
-            </h1>
-
-            <p className="description">
-              Logget ind som {session.user.email}
-            </p>
+            <p className="eyebrow">SCOREINDTASTNING</p>
+            <h1>{assignment?.name ?? "Henter bold..."}</h1>
           </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {playerId && onBackToPlayer && (
-              <button type="button" onClick={onBackToPlayer} className="logout-button tgt-marker-player-back" aria-label="Tilbage til Mit TGT"><span aria-hidden="true">‹</span> Tilbage</button>
-            )}
-            {assignment && availableAssignments.length > 1 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setAssignment(null);
-                  setSelectedRoundNumber(null);
-                }}
-                className="logout-button"
-              >
-                Skift runde
-              </button>
-            )}
-            {assignment && (
-              <button
-                type="button"
-                onClick={() => {
-                  setMarkerLiveView(
-                    assignment.rounds?.live_leaderboard_mode === "team" ? "team" : "individual"
-                  );
-                  setMarkerLiveOpen(true);
-                }}
-                className="logout-button"
-              >
-                Se livescore
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onLogout}
-              className="logout-button"
-            >
-              Log ud
-            </button>
-          </div>
+          <button type="button" className="tgt-marker-burger" aria-label="Åbn markørmenu" aria-expanded={markerMenuOpen} onClick={()=>setMarkerMenuOpen((open)=>!open)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          {markerMenuOpen && <div className="tgt-marker-menu" role="menu">
+            {playerId && onBackToPlayer && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);onBackToPlayer();}}>Tilbage til Mit TGT</button>}
+            {assignment && availableAssignments.length > 1 && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);setAssignment(null);setSelectedRoundNumber(null);}}>Skift runde</button>}
+            {assignment && assignment.rounds?.live_leaderboard_mode !== "none" && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);setMarkerLiveView(assignment.rounds?.live_leaderboard_mode === "team" ? "team" : "individual");setMarkerLiveOpen(true);}}>Se livescore</button>}
+            <button type="button" role="menuitem" onClick={onLogout}>Log ud</button>
+          </div>}
         </div>
 
         {assignment && assignment.rounds?.live_leaderboard_mode !== "none" && (

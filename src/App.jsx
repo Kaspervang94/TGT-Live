@@ -1009,23 +1009,36 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         (round) => round.round_type === "individual_final"
       );
 
-      let [currentLiveData, currentTeamData] = await Promise.all([
-        getLiveRoundLeaderboard({ season: selectedSeason }),
-        teamFinalRound
-          ? getTeamLeaderboard({
-              season: selectedSeason,
-              roundNumber: teamFinalRound.round_number,
-            })
-          : Promise.resolve(null),
-      ]);
+      const currentLiveRound = [...(roundRows ?? [])]
+        .filter((round) => String(round.status ?? "").trim().toLowerCase() === "live")
+        .sort((a, b) => Number(b.round_number ?? 0) - Number(a.round_number ?? 0))[0] ?? null;
 
-      let currentLiveRound = (roundRows ?? []).find(
-        (round) => round.id === currentLiveData?.round?.id
-      );
-      if (!currentLiveRound || currentLiveRound.status !== "live") {
-        currentLiveData = null;
-        currentTeamData = null;
-        currentLiveRound = null;
+      let [currentLiveData, currentTeamData] = currentLiveRound
+        ? await Promise.all([
+            getLiveRoundLeaderboard({
+              season: selectedSeason,
+              roundId: currentLiveRound.id,
+            }),
+            getTeamLeaderboard({
+              season: selectedSeason,
+              roundNumber: currentLiveRound.round_number,
+            }).catch(() => null),
+          ])
+        : [null, null];
+
+      if (currentLiveData?.round) {
+        currentLiveData = {
+          ...currentLiveData,
+          round: {
+            ...currentLiveData.round,
+            id: currentLiveData.round.id ?? currentLiveRound?.id,
+            status: "live",
+            liveLeaderboardMode: currentLiveRound?.live_leaderboard_mode ??
+              currentLiveData.round.liveLeaderboardMode ??
+              currentLiveData.round.live_leaderboard_mode ??
+              "individual",
+          },
+        };
       }
       const liveTeeId =
         currentLiveData?.round?.teeId ??
@@ -1131,6 +1144,11 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
       .channel("tgt-public-leaderboards")
       .on(
         "postgres_changes",
+        { event: "*", schema: "public", table: "rounds" },
+        loadData
+      )
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "scores" },
         async (payload) => {
           await loadData();
@@ -1176,7 +1194,7 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
   const liveLeaderboardMode =
     liveData?.round?.liveLeaderboardMode ??
     liveData?.round?.live_leaderboard_mode ??
-    "none";
+    (liveData?.round ? "individual" : "none");
   const individualLiveCumulativeActive = ["individual", "both"].includes(liveLeaderboardMode);
   const teamLiveCumulativeActive = ["team", "both"].includes(liveLeaderboardMode);
   const liveCumulativeActive = individualLiveCumulativeActive || teamLiveCumulativeActive;
@@ -2723,6 +2741,32 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
           .tgt-player-shell .tgt-app-back span,
           .tgt-menu-page .tgt-app-back span{display:none!important}
         }
+
+        /* FINAL CRISP LIVE EXPERIENCE: public, Mit TGT and marker */
+        .tgt-public-shell,.tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page,.tgt-ops-shell,
+        .tgt-public-topbar,.tgt-player-appbar,.tgt-menu-page-head,.marker-header,
+        .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen,
+        .tgt-marker-live-panel,.tgt-marker-live-header,.tgt-fixed-bottom-nav{
+          filter:none!important;
+          backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important;
+        }
+        .tgt-public-topbar,.tgt-player-appbar,.tgt-menu-page-head{background:linear-gradient(135deg,#075238,#0a6845)!important;opacity:1!important}
+        .tgt-marker-dashboard-card{overflow:visible!important;background:#f4f7f5!important}
+        .tgt-marker-clean-header{background:#fff!important;border-bottom:1px solid #dce7e0!important}
+        .tgt-marker-menu{background:#fff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+        .tgt-marker-live-panel{background:#f3f7f4!important}
+        .tgt-marker-live-header{background:linear-gradient(135deg,#075238,#0a6845)!important;color:#fff!important}
+        .tgt-marker-live-scroll{padding-bottom:calc(36px + env(safe-area-inset-bottom))!important}
+        .tgt-marker-live-table table{background:#fff!important;border-collapse:separate!important;border-spacing:0 7px!important;padding:8px!important}
+        .tgt-marker-live-table tbody tr{background:#fff!important;box-shadow:0 5px 16px rgba(7,63,44,.07)!important}
+        .tgt-marker-live-table tbody td{padding:14px 10px!important;border-top:1px solid #e1ebe4!important;border-bottom:1px solid #e1ebe4!important}
+        .tgt-marker-live-toggle{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;padding:10px!important;background:#eef5f0!important}
+        .tgt-marker-live-toggle button{min-height:44px!important;border:1px solid #cfe0d5!important;border-radius:12px!important;color:#0b6543!important;background:#fff!important;font-weight:900!important}
+        .tgt-marker-live-toggle button.active{border-color:#168454!important;color:#fff!important;background:#168454!important}
+        .tgt-marker-live-panel .position-badge.position-1{color:#513700!important;background:linear-gradient(145deg,#fff0ae,#d7ad4f 55%,#b77b28)!important}
+        .tgt-marker-live-panel .position-badge.position-2{color:#33424b!important;background:#d9e0e4!important}
+        .tgt-marker-live-panel .position-badge.position-3{color:#5c3214!important;background:#dca56f!important}
 `}</style>
 
       <header className="tgt-public-topbar">
@@ -4547,6 +4591,32 @@ function PlayerDashboard({ session, onLogout, onStartScoring, onNavigate, initia
           .tgt-player-shell .tgt-app-back span,
           .tgt-menu-page .tgt-app-back span{display:none!important}
         }
+
+        /* FINAL CRISP LIVE EXPERIENCE: public, Mit TGT and marker */
+        .tgt-public-shell,.tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page,.tgt-ops-shell,
+        .tgt-public-topbar,.tgt-player-appbar,.tgt-menu-page-head,.marker-header,
+        .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen,
+        .tgt-marker-live-panel,.tgt-marker-live-header,.tgt-fixed-bottom-nav{
+          filter:none!important;
+          backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important;
+        }
+        .tgt-public-topbar,.tgt-player-appbar,.tgt-menu-page-head{background:linear-gradient(135deg,#075238,#0a6845)!important;opacity:1!important}
+        .tgt-marker-dashboard-card{overflow:visible!important;background:#f4f7f5!important}
+        .tgt-marker-clean-header{background:#fff!important;border-bottom:1px solid #dce7e0!important}
+        .tgt-marker-menu{background:#fff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+        .tgt-marker-live-panel{background:#f3f7f4!important}
+        .tgt-marker-live-header{background:linear-gradient(135deg,#075238,#0a6845)!important;color:#fff!important}
+        .tgt-marker-live-scroll{padding-bottom:calc(36px + env(safe-area-inset-bottom))!important}
+        .tgt-marker-live-table table{background:#fff!important;border-collapse:separate!important;border-spacing:0 7px!important;padding:8px!important}
+        .tgt-marker-live-table tbody tr{background:#fff!important;box-shadow:0 5px 16px rgba(7,63,44,.07)!important}
+        .tgt-marker-live-table tbody td{padding:14px 10px!important;border-top:1px solid #e1ebe4!important;border-bottom:1px solid #e1ebe4!important}
+        .tgt-marker-live-toggle{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;padding:10px!important;background:#eef5f0!important}
+        .tgt-marker-live-toggle button{min-height:44px!important;border:1px solid #cfe0d5!important;border-radius:12px!important;color:#0b6543!important;background:#fff!important;font-weight:900!important}
+        .tgt-marker-live-toggle button.active{border-color:#168454!important;color:#fff!important;background:#168454!important}
+        .tgt-marker-live-panel .position-badge.position-1{color:#513700!important;background:linear-gradient(145deg,#fff0ae,#d7ad4f 55%,#b77b28)!important}
+        .tgt-marker-live-panel .position-badge.position-2{color:#33424b!important;background:#d9e0e4!important}
+        .tgt-marker-live-panel .position-badge.position-3{color:#5c3214!important;background:#dca56f!important}
 `}</style><section className="tgt-player-home">
   <header className="tgt-player-appbar">
     <button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>
@@ -9601,6 +9671,32 @@ function MarkerDashboard({
 
         /* FINAL LIVE DATA SYNC: Mit TGT and marker use the same active-round source */
         .tgt-marker-live-panel,.tgt-live-fullscreen{overscroll-behavior:contain}
+
+        /* FINAL CRISP LIVE EXPERIENCE: public, Mit TGT and marker */
+        .tgt-public-shell,.tgt-mit-tgt-universe,.tgt-player-shell,.tgt-menu-page,.tgt-ops-shell,
+        .tgt-public-topbar,.tgt-player-appbar,.tgt-menu-page-head,.marker-header,
+        .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen,
+        .tgt-marker-live-panel,.tgt-marker-live-header,.tgt-fixed-bottom-nav{
+          filter:none!important;
+          backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important;
+        }
+        .tgt-public-topbar,.tgt-player-appbar,.tgt-menu-page-head{background:linear-gradient(135deg,#075238,#0a6845)!important;opacity:1!important}
+        .tgt-marker-dashboard-card{overflow:visible!important;background:#f4f7f5!important}
+        .tgt-marker-clean-header{background:#fff!important;border-bottom:1px solid #dce7e0!important}
+        .tgt-marker-menu{background:#fff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+        .tgt-marker-live-panel{background:#f3f7f4!important}
+        .tgt-marker-live-header{background:linear-gradient(135deg,#075238,#0a6845)!important;color:#fff!important}
+        .tgt-marker-live-scroll{padding-bottom:calc(36px + env(safe-area-inset-bottom))!important}
+        .tgt-marker-live-table table{background:#fff!important;border-collapse:separate!important;border-spacing:0 7px!important;padding:8px!important}
+        .tgt-marker-live-table tbody tr{background:#fff!important;box-shadow:0 5px 16px rgba(7,63,44,.07)!important}
+        .tgt-marker-live-table tbody td{padding:14px 10px!important;border-top:1px solid #e1ebe4!important;border-bottom:1px solid #e1ebe4!important}
+        .tgt-marker-live-toggle{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;padding:10px!important;background:#eef5f0!important}
+        .tgt-marker-live-toggle button{min-height:44px!important;border:1px solid #cfe0d5!important;border-radius:12px!important;color:#0b6543!important;background:#fff!important;font-weight:900!important}
+        .tgt-marker-live-toggle button.active{border-color:#168454!important;color:#fff!important;background:#168454!important}
+        .tgt-marker-live-panel .position-badge.position-1{color:#513700!important;background:linear-gradient(145deg,#fff0ae,#d7ad4f 55%,#b77b28)!important}
+        .tgt-marker-live-panel .position-badge.position-2{color:#33424b!important;background:#d9e0e4!important}
+        .tgt-marker-live-panel .position-badge.position-3{color:#5c3214!important;background:#dca56f!important}
 `}</style>
 
       <section className="marker-card tgt-marker-dashboard-card">
@@ -9615,7 +9711,7 @@ function MarkerDashboard({
           {markerMenuOpen && <div className="tgt-marker-menu" role="menu">
             {playerId && onBackToPlayer && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);onBackToPlayer();}}>Tilbage til Mit TGT</button>}
             {assignment && availableAssignments.length > 1 && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);setAssignment(null);setSelectedRoundNumber(null);}}>Skift runde</button>}
-            {assignment && assignment.rounds?.live_leaderboard_mode !== "none" && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);setMarkerLiveView(assignment.rounds?.live_leaderboard_mode === "team" ? "team" : "individual");setMarkerLiveOpen(true);}}>Se livescore</button>}
+            {assignment && <button type="button" role="menuitem" onClick={()=>{setMarkerMenuOpen(false);setMarkerLiveView(assignment.rounds?.live_leaderboard_mode === "team" ? "team" : "individual");setMarkerLiveOpen(true);loadMarkerLiveScore();}}>Se livescore</button>}
             <button type="button" role="menuitem" onClick={onLogout}>Log ud</button>
           </div>}
         </div>

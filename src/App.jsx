@@ -2664,6 +2664,65 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
         }
         .tgt-mit-tgt-universe .position-badge.position-2,.tgt-player-shell .position-badge.position-2{color:#33424b!important;background:#d9e0e4!important;border-color:#c4ced3!important}
         .tgt-mit-tgt-universe .position-badge.position-3,.tgt-player-shell .position-badge.position-3{color:#5c3214!important;background:#dca56f!important;border-color:#c98e54!important}
+
+        /* FINAL VISIBLE BACK BUTTON: readable on every light or dark page */
+        .tgt-mit-tgt-universe .tgt-app-back,
+        .tgt-player-shell .tgt-app-back,
+        .tgt-menu-page .tgt-app-back{
+          display:inline-flex!important;
+          align-items:center!important;
+          justify-content:center!important;
+          gap:5px!important;
+          min-width:42px!important;
+          width:auto!important;
+          height:42px!important;
+          padding:0 10px!important;
+          border:1px solid rgba(255,255,255,.72)!important;
+          border-radius:12px!important;
+          color:#ffffff!important;
+          background:#075238!important;
+          background-image:none!important;
+          box-shadow:0 5px 14px rgba(3,38,27,.28)!important;
+          filter:none!important;
+          backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important;
+          opacity:1!important;
+          visibility:visible!important;
+          isolation:isolate!important;
+          z-index:2147483640!important;
+          text-shadow:none!important;
+          pointer-events:auto!important;
+        }
+        .tgt-mit-tgt-universe .tgt-app-back svg,
+        .tgt-player-shell .tgt-app-back svg,
+        .tgt-menu-page .tgt-app-back svg{
+          display:block!important;
+          width:23px!important;
+          height:23px!important;
+          min-width:23px!important;
+          fill:none!important;
+          stroke:#ffffff!important;
+          color:#ffffff!important;
+          stroke-width:2.6!important;
+          stroke-linecap:round!important;
+          stroke-linejoin:round!important;
+          opacity:1!important;
+          filter:none!important;
+        }
+        .tgt-mit-tgt-universe .tgt-app-back span,
+        .tgt-player-shell .tgt-app-back span,
+        .tgt-menu-page .tgt-app-back span{color:#ffffff!important;opacity:1!important}
+        .tgt-mit-tgt-universe .tgt-app-back:active,
+        .tgt-player-shell .tgt-app-back:active,
+        .tgt-menu-page .tgt-app-back:active{transform:scale(.96)!important;background:#063f2d!important}
+        @media(max-width:500px){
+          .tgt-mit-tgt-universe .tgt-app-back,
+          .tgt-player-shell .tgt-app-back,
+          .tgt-menu-page .tgt-app-back{width:42px!important;min-width:42px!important;padding:0!important}
+          .tgt-mit-tgt-universe .tgt-app-back span,
+          .tgt-player-shell .tgt-app-back span,
+          .tgt-menu-page .tgt-app-back span{display:none!important}
+        }
 `}</style>
 
       <header className="tgt-public-topbar">
@@ -3928,6 +3987,65 @@ function MitTgtMenuPage({ onNavigate, onLogout }) {
           .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
           .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen{padding-bottom:calc(144px + env(safe-area-inset-bottom))!important}
         }
+
+        /* FINAL VISIBLE BACK BUTTON: readable on every light or dark page */
+        .tgt-mit-tgt-universe .tgt-app-back,
+        .tgt-player-shell .tgt-app-back,
+        .tgt-menu-page .tgt-app-back{
+          display:inline-flex!important;
+          align-items:center!important;
+          justify-content:center!important;
+          gap:5px!important;
+          min-width:42px!important;
+          width:auto!important;
+          height:42px!important;
+          padding:0 10px!important;
+          border:1px solid rgba(255,255,255,.72)!important;
+          border-radius:12px!important;
+          color:#ffffff!important;
+          background:#075238!important;
+          background-image:none!important;
+          box-shadow:0 5px 14px rgba(3,38,27,.28)!important;
+          filter:none!important;
+          backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important;
+          opacity:1!important;
+          visibility:visible!important;
+          isolation:isolate!important;
+          z-index:2147483640!important;
+          text-shadow:none!important;
+          pointer-events:auto!important;
+        }
+        .tgt-mit-tgt-universe .tgt-app-back svg,
+        .tgt-player-shell .tgt-app-back svg,
+        .tgt-menu-page .tgt-app-back svg{
+          display:block!important;
+          width:23px!important;
+          height:23px!important;
+          min-width:23px!important;
+          fill:none!important;
+          stroke:#ffffff!important;
+          color:#ffffff!important;
+          stroke-width:2.6!important;
+          stroke-linecap:round!important;
+          stroke-linejoin:round!important;
+          opacity:1!important;
+          filter:none!important;
+        }
+        .tgt-mit-tgt-universe .tgt-app-back span,
+        .tgt-player-shell .tgt-app-back span,
+        .tgt-menu-page .tgt-app-back span{color:#ffffff!important;opacity:1!important}
+        .tgt-mit-tgt-universe .tgt-app-back:active,
+        .tgt-player-shell .tgt-app-back:active,
+        .tgt-menu-page .tgt-app-back:active{transform:scale(.96)!important;background:#063f2d!important}
+        @media(max-width:500px){
+          .tgt-mit-tgt-universe .tgt-app-back,
+          .tgt-player-shell .tgt-app-back,
+          .tgt-menu-page .tgt-app-back{width:42px!important;min-width:42px!important;padding:0!important}
+          .tgt-mit-tgt-universe .tgt-app-back span,
+          .tgt-player-shell .tgt-app-back span,
+          .tgt-menu-page .tgt-app-back span{display:none!important}
+        }
 `}</style>
   </main>;
 }
@@ -4370,6 +4488,65 @@ function PlayerDashboard({ session, onLogout, onStartScoring, onNavigate, initia
         }
         .tgt-mit-tgt-universe .position-badge.position-2,.tgt-player-shell .position-badge.position-2{color:#33424b!important;background:#d9e0e4!important;border-color:#c4ced3!important}
         .tgt-mit-tgt-universe .position-badge.position-3,.tgt-player-shell .position-badge.position-3{color:#5c3214!important;background:#dca56f!important;border-color:#c98e54!important}
+
+        /* FINAL VISIBLE BACK BUTTON: readable on every light or dark page */
+        .tgt-mit-tgt-universe .tgt-app-back,
+        .tgt-player-shell .tgt-app-back,
+        .tgt-menu-page .tgt-app-back{
+          display:inline-flex!important;
+          align-items:center!important;
+          justify-content:center!important;
+          gap:5px!important;
+          min-width:42px!important;
+          width:auto!important;
+          height:42px!important;
+          padding:0 10px!important;
+          border:1px solid rgba(255,255,255,.72)!important;
+          border-radius:12px!important;
+          color:#ffffff!important;
+          background:#075238!important;
+          background-image:none!important;
+          box-shadow:0 5px 14px rgba(3,38,27,.28)!important;
+          filter:none!important;
+          backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important;
+          opacity:1!important;
+          visibility:visible!important;
+          isolation:isolate!important;
+          z-index:2147483640!important;
+          text-shadow:none!important;
+          pointer-events:auto!important;
+        }
+        .tgt-mit-tgt-universe .tgt-app-back svg,
+        .tgt-player-shell .tgt-app-back svg,
+        .tgt-menu-page .tgt-app-back svg{
+          display:block!important;
+          width:23px!important;
+          height:23px!important;
+          min-width:23px!important;
+          fill:none!important;
+          stroke:#ffffff!important;
+          color:#ffffff!important;
+          stroke-width:2.6!important;
+          stroke-linecap:round!important;
+          stroke-linejoin:round!important;
+          opacity:1!important;
+          filter:none!important;
+        }
+        .tgt-mit-tgt-universe .tgt-app-back span,
+        .tgt-player-shell .tgt-app-back span,
+        .tgt-menu-page .tgt-app-back span{color:#ffffff!important;opacity:1!important}
+        .tgt-mit-tgt-universe .tgt-app-back:active,
+        .tgt-player-shell .tgt-app-back:active,
+        .tgt-menu-page .tgt-app-back:active{transform:scale(.96)!important;background:#063f2d!important}
+        @media(max-width:500px){
+          .tgt-mit-tgt-universe .tgt-app-back,
+          .tgt-player-shell .tgt-app-back,
+          .tgt-menu-page .tgt-app-back{width:42px!important;min-width:42px!important;padding:0!important}
+          .tgt-mit-tgt-universe .tgt-app-back span,
+          .tgt-player-shell .tgt-app-back span,
+          .tgt-menu-page .tgt-app-back span{display:none!important}
+        }
 `}</style><section className="tgt-player-home">
   <header className="tgt-player-appbar">
     <button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>

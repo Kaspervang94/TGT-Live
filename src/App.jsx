@@ -2634,6 +2634,36 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
           .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
           .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen{padding-bottom:calc(144px + env(safe-area-inset-bottom))!important}
         }
+
+        /* FINAL THREE FIXES: crisp top, gold first place, simple LIVE label */
+        .tgt-mit-tgt-universe .tgt-public-topbar,
+        .tgt-player-shell .tgt-player-appbar,
+        .tgt-menu-page .tgt-menu-page-head{
+          backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important;
+          filter:none!important;
+          opacity:1!important;
+          background:linear-gradient(135deg,#075238,#0a6845)!important;
+        }
+        .tgt-mit-tgt-universe .main-content,
+        .tgt-mit-tgt-universe .leaderboard-card,
+        .tgt-player-shell .tgt-player-home,
+        .tgt-menu-page .tgt-menu-page-shell{
+          filter:none!important;
+          backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important;
+        }
+        .tgt-mit-tgt-universe .position-badge.position-1,
+        .tgt-mit-tgt-universe .position-1,
+        .tgt-player-shell .position-badge.position-1,
+        .tgt-player-shell .position-1{
+          color:#513700!important;
+          background:linear-gradient(145deg,#fff0ae,#d7ad4f 55%,#b77b28)!important;
+          border-color:#c79238!important;
+          box-shadow:0 4px 12px rgba(183,123,40,.24)!important;
+        }
+        .tgt-mit-tgt-universe .position-badge.position-2,.tgt-player-shell .position-badge.position-2{color:#33424b!important;background:#d9e0e4!important;border-color:#c4ced3!important}
+        .tgt-mit-tgt-universe .position-badge.position-3,.tgt-player-shell .position-badge.position-3{color:#5c3214!important;background:#dca56f!important;border-color:#c98e54!important}
 `}</style>
 
       <header className="tgt-public-topbar">
@@ -2949,15 +2979,11 @@ function Leaderboard({ onOpenPlayerLogin, initialPortalView = null, onPortalNavi
               <h2>{currentHeading.title}</h2>
 
             </div>
-            <div className="live-badge">
-              <span className="live-dot" /> {liveLeaderboardMode === "both"
-                ? "INDIVIDUEL + HOLD LIVE"
-                : liveLeaderboardMode === "individual"
-                  ? "INDIVIDUEL LIVE"
-                  : liveLeaderboardMode === "team"
-                    ? "HOLD LIVE"
-                    : "LIVE"}
-            </div>
+            {Boolean(liveData?.round) && ["season", "live"].includes(tab) && (
+              <div className="live-badge">
+                <span className="live-dot" /> LIVE
+              </div>
+            )}
           </div>
 
           {loading && <div className="status-box">Henter TGT-data...</div>}
@@ -4314,6 +4340,36 @@ function PlayerDashboard({ session, onLogout, onStartScoring, onNavigate, initia
           .tgt-mit-tgt-universe .main-content,.tgt-player-shell .tgt-player-content,.tgt-menu-page-shell{padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
           .tgt-individual-fullscreen,.tgt-team-fullscreen,.tgt-live-fullscreen,.tgt-panel-fullscreen{padding-bottom:calc(144px + env(safe-area-inset-bottom))!important}
         }
+
+        /* FINAL THREE FIXES: crisp top, gold first place, simple LIVE label */
+        .tgt-mit-tgt-universe .tgt-public-topbar,
+        .tgt-player-shell .tgt-player-appbar,
+        .tgt-menu-page .tgt-menu-page-head{
+          backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important;
+          filter:none!important;
+          opacity:1!important;
+          background:linear-gradient(135deg,#075238,#0a6845)!important;
+        }
+        .tgt-mit-tgt-universe .main-content,
+        .tgt-mit-tgt-universe .leaderboard-card,
+        .tgt-player-shell .tgt-player-home,
+        .tgt-menu-page .tgt-menu-page-shell{
+          filter:none!important;
+          backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important;
+        }
+        .tgt-mit-tgt-universe .position-badge.position-1,
+        .tgt-mit-tgt-universe .position-1,
+        .tgt-player-shell .position-badge.position-1,
+        .tgt-player-shell .position-1{
+          color:#513700!important;
+          background:linear-gradient(145deg,#fff0ae,#d7ad4f 55%,#b77b28)!important;
+          border-color:#c79238!important;
+          box-shadow:0 4px 12px rgba(183,123,40,.24)!important;
+        }
+        .tgt-mit-tgt-universe .position-badge.position-2,.tgt-player-shell .position-badge.position-2{color:#33424b!important;background:#d9e0e4!important;border-color:#c4ced3!important}
+        .tgt-mit-tgt-universe .position-badge.position-3,.tgt-player-shell .position-badge.position-3{color:#5c3214!important;background:#dca56f!important;border-color:#c98e54!important}
 `}</style><section className="tgt-player-home">
   <header className="tgt-player-appbar">
     <button type="button" className="tgt-app-back" aria-label="Tilbage til forrige side" onClick={()=>onNavigate("__back__")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Tilbage</span></button>
